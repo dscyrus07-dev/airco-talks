@@ -1,0 +1,16 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "rules": {
+    "no-unused-vars": "off",
+    "no-undef": "off"
+  },
+  "ignorePatterns": ["node_modules/", "dist/", ".next/", "coverage/"]
+}

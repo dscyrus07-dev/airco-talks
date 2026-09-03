@@ -1,0 +1,43 @@
+{
+  "name": "@dhvani/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./languages": {
+      "types": "./dist/languages/index.d.ts",
+      "import": "./dist/languages/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "import": "./dist/protocol/index.js"
+    },
+    "./state": {
+      "types": "./dist/state/index.d.ts",
+      "import": "./dist/state/index.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "build": "tsc",
+    "prepack": "tsc"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}
