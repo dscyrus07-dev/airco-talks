@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WebSocketClient, type ConnectionStatus, type ServerMessageHandler } from "@/lib/websocket-client";
-import type { ClientMessage } from "@dhvani/shared";
+import type { ClientMessage } from "@airco-talks/shared";
 
 /**
  * React wrapper around {@link WebSocketClient}. Owns the connection lifecycle

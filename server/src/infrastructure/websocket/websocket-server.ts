@@ -5,8 +5,7 @@ import {
   parseClientMessage,
   type ClientMessage,
   type ServerMessage,
-  type LanguageSetting,
-} from "@dhvani/shared";
+} from "@airco-talks/shared";
 
 import type { VoiceConversationOrchestrator } from "../../application/voice-conversation-orchestrator.js";
 import type { EventBus } from "../../domain/event-bus.js";
@@ -19,7 +18,9 @@ export interface WebSocketServerDeps {
   eventBus: EventBus;
   logger: ILogger;
   port: number;
-  allowedOrigin: string;
+  allowedOrigins: string[];
+  /** Optional real provider readiness probe, surfaced via GET /health. */
+  providerHealth?: () => Promise<Record<string, boolean>>;
 }
 
 /**
@@ -29,7 +30,7 @@ export interface WebSocketServerDeps {
  *  - subscribes to orchestrator events once and forwards them to the right
  *    client by sessionId.
  */
-export class DhvaniWebSocketServer {
+export class AircoTalksWebSocketServer {
   private wss: WebSocketServer | null = null;
   private httpServer: http.Server | null = null;
   /** sessionId → client socket, for routing server events back to the browser. */
@@ -40,9 +41,23 @@ export class DhvaniWebSocketServer {
 
   start(): Promise<void> {
     return new Promise((resolve) => {
-      this.httpServer = http.createServer((_req, res) => {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ service: "Airco DHVANI AI", status: "ok" }));
+      this.httpServer = http.createServer((req, res) => {
+        // Health data is non-sensitive (provider readiness booleans) and is
+        // fetched cross-origin by the web app, so allow any origin for GETs.
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        if (req.url?.startsWith("/health") && this.deps.providerHealth) {
+          void this.deps
+            .providerHealth()
+            .then((providers) =>
+              res.end(JSON.stringify({ service: "Airco Talks", status: "ok", providers })),
+            )
+            .catch(() => res.end(JSON.stringify({ service: "Airco Talks", status: "ok" })));
+          return;
+        }
+        res.end(JSON.stringify({ service: "Airco Talks", status: "ok" }));
       });
 
       this.wss = new WebSocketServer({
@@ -76,16 +91,22 @@ export class DhvaniWebSocketServer {
   }
 
   private verifyClient(info: { origin: string; secure: boolean; req: import("node:http").IncomingMessage }): boolean {
-    // Allow same-origin dev (no origin) or the configured web origin.
+    // Allow same-origin dev (no origin) or any of the configured web origins.
     if (!info.origin) return true;
     try {
-      const allowed = new URL(this.deps.allowedOrigin).origin;
       const incoming = new URL(info.origin).origin;
-      if (incoming === allowed) return true;
-      // In dev, accept any localhost origin so port changes don't break WS.
       const isLocalhost = (u: URL) => u.hostname === "localhost" || u.hostname === "127.0.0.1";
-      if (isLocalhost(new URL(allowed)) && isLocalhost(new URL(info.origin))) return true;
-      return false;
+      const allowed = this.deps.allowedOrigins.some((allowedOrigin) => {
+        const origin = new URL(allowedOrigin).origin;
+        return incoming === origin || (isLocalhost(new URL(origin)) && isLocalhost(new URL(incoming)));
+      });
+      if (!allowed) {
+        this.deps.logger.warn("WebSocket connection rejected: origin not allowed", {
+          origin: info.origin,
+          allowedOrigins: this.deps.allowedOrigins,
+        });
+      }
+      return allowed;
     } catch {
       return false;
     }
@@ -127,8 +148,12 @@ export class DhvaniWebSocketServer {
         case "start_session": {
           const sessionId = message.sessionId ?? crypto.randomUUID();
           this.connections.set(sessionId, socket);
-          const setting = message.language as LanguageSetting;
-          await this.deps.orchestrator.startSession(sessionId, setting, message.voice);
+          await this.deps.orchestrator.startSession(
+            sessionId,
+            message.myLanguage,
+            message.theirLanguage,
+            message.voice,
+          );
           break;
         }
         case "audio_chunk": {
@@ -140,7 +165,12 @@ export class DhvaniWebSocketServer {
           await this.deps.orchestrator.interrupt(message.sessionId);
           break;
         case "update_config":
-          await this.deps.orchestrator.updateConfig(message.sessionId, message.language, message.voice);
+          await this.deps.orchestrator.updateConfig(
+            message.sessionId,
+            message.myLanguage,
+            message.theirLanguage,
+            message.voice,
+          );
           break;
         case "stop_session":
           await this.deps.orchestrator.stopSession(message.sessionId);

@@ -2,10 +2,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   VoiceSessionState,
+  isLanguageCode,
+  isLanguageSetting,
   type LanguageCode,
   type LanguageSetting,
   type ServerMessage,
-} from "@dhvani/shared";
+} from "@airco-talks/shared";
 import { useWebSocket } from "./useWebSocket";
 import { useMicrophone } from "./useMicrophone";
 import { useAudioPlayback } from "./useAudioPlayback";
@@ -14,6 +16,16 @@ import { useConversation } from "./useConversation";
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
 const BARGE_IN_LEVEL = 0.15;
 const BARGE_IN_CONSECUTIVE = 3;
+const SETTINGS_KEY = "airco-talks.settings";
+
+export interface TranslatorSettings {
+  /** Language of the person holding the device (always a fixed code). */
+  myLanguage: LanguageCode;
+  /** Language of the other person — a fixed code or "auto" (customer mode). */
+  theirLanguage: LanguageSetting;
+  /** Preferred TTS voice override (empty = provider default for language). */
+  voice: string;
+}
 
 export interface VoiceSessionViewModel {
   voiceState: VoiceSessionState;
@@ -27,8 +39,32 @@ export interface VoiceSessionViewModel {
   error: { code: string; message: string } | null;
   micActive: boolean;
   speaking: boolean;
-  settings: { language: LanguageSetting; voice: string };
+  getMicLevel: () => number;
+  settings: TranslatorSettings;
 }
+
+function parseSettings(raw: string | null): TranslatorSettings | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<TranslatorSettings>;
+    if (!isLanguageCode(parsed.myLanguage)) return null;
+    if (!isLanguageSetting(parsed.theirLanguage)) return null;
+    return {
+      myLanguage: parsed.myLanguage,
+      theirLanguage: parsed.theirLanguage,
+      voice: typeof parsed.voice === "string" ? parsed.voice : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Default pair: the holder picks their language; the customer's language is
+ * auto-detected. Loaded from localStorage AFTER mount (never during render)
+ * so server-rendered HTML always matches the first client render.
+ */
+const DEFAULT_SETTINGS: TranslatorSettings = { myLanguage: "hi", theirLanguage: "auto", voice: "" };
 
 export function useVoiceSession() {
   const ws = useWebSocket(WS_URL);
@@ -41,13 +77,21 @@ export function useVoiceSession() {
   const [languageConfidence, setLanguageConfidence] = useState(0);
   const [latency, setLatency] = useState<VoiceSessionViewModel["latency"]>({});
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
-  const [settings, setSettings] = useState<{ language: LanguageSetting; voice: string }>({
-    language: "auto",
-    voice: "",
-  });
+  const [settings, setSettings] = useState<TranslatorSettings>(DEFAULT_SETTINGS);
+
+  // Hydration-safe settings restore: only after mount, so the first client
+  // render matches the server-rendered HTML.
+  useEffect(() => {
+    try {
+      const saved = parseSettings(localStorage.getItem(SETTINGS_KEY));
+      if (saved) setSettings(saved);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
 
   const sessionIdRef = useRef<string | null>(null);
-  const pendingStartRef = useRef<{ sessionId: string; language: LanguageSetting; voice: string } | null>(null);
+  const pendingStartRef = useRef<{ sessionId: string; settings: TranslatorSettings } | null>(null);
   const bargeCounterRef = useRef(0);
 
   // ── Incoming message handling ─────────────────────────────
@@ -115,7 +159,7 @@ export function useVoiceSession() {
   // ── Start once the socket is connected ────────────────────
   useEffect(() => {
     if (ws.status !== "connected" || !pendingStartRef.current) return;
-    const { sessionId, language, voice } = pendingStartRef.current;
+    const { sessionId, settings } = pendingStartRef.current;
     pendingStartRef.current = null;
     sessionIdRef.current = sessionId;
     setVoiceState(VoiceSessionState.CONNECTING);
@@ -126,10 +170,16 @@ export function useVoiceSession() {
       }
     });
 
-    ws.send({ type: "start_session", sessionId, language, voice });
+    ws.send({
+      type: "start_session",
+      sessionId,
+      myLanguage: settings.myLanguage,
+      theirLanguage: settings.theirLanguage,
+      voice: settings.voice,
+    });
   }, [ws.status, ws, mic]);
 
-  // ── Barge-in: detect user speech while AI is speaking ─────
+  // ── Barge-in: detect speech while the translation is playing ──
   useEffect(() => {
     if (voiceState !== VoiceSessionState.AI_SPEAKING) {
       bargeCounterRef.current = 0;
@@ -155,7 +205,7 @@ export function useVoiceSession() {
   const start = useCallback(() => {
     setError(null);
     const sessionId = crypto.randomUUID();
-    pendingStartRef.current = { sessionId, language: settings.language, voice: settings.voice };
+    pendingStartRef.current = { sessionId, settings };
     ws.connect();
   }, [settings, ws]);
 
@@ -192,15 +242,21 @@ export function useVoiceSession() {
   }, [audio, ws, conv]);
 
   const updateSettings = useCallback(
-    (next: Partial<{ language: LanguageSetting; voice: string }>) => {
+    (next: Partial<TranslatorSettings>) => {
       setSettings((prev) => {
         const merged = { ...prev, ...next };
+        try {
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+        } catch {
+          /* storage unavailable (private mode) */
+        }
         const sid = sessionIdRef.current;
         if (sid) {
           ws.send({
             type: "update_config",
             sessionId: sid,
-            language: merged.language,
+            myLanguage: merged.myLanguage,
+            theirLanguage: merged.theirLanguage,
             voice: merged.voice,
           });
         }
@@ -229,6 +285,7 @@ export function useVoiceSession() {
     micError: mic.error,
     micActive: mic.active,
     speaking: audio.speaking,
+    getMicLevel: mic.getLevel,
     settings,
     toggle,
     interrupt,

@@ -1,5 +1,5 @@
-import type { LanguageCode, LanguageLocale, LanguageSetting } from "@dhvani/shared";
-import { VoiceSessionState, AUTO_LANGUAGE } from "@dhvani/shared";
+import type { LanguageCode, LanguageSetting } from "@airco-talks/shared";
+import { VoiceSessionState } from "@airco-talks/shared";
 
 import { EventBus } from "../domain/event-bus.js";
 import { VoiceSessionStateMachine } from "../domain/state-machine/voice-session-state-machine.js";
@@ -8,17 +8,15 @@ import type {
   SpeechRecognitionProvider,
   AudioChunk,
   ProviderErrorEvent,
-  SttLanguage,
 } from "../domain/interfaces/speech-recognition-provider.js";
 import type { LLMProvider } from "../domain/interfaces/llm-provider.js";
 import type { TTSProvider } from "../domain/interfaces/tts-provider.js";
 
 import { ConversationManager } from "./conversation-manager.js";
 import { LanguageService } from "./language-service.js";
-import { buildPrompt } from "./prompt-builder.js";
+import { buildTranslationPrompt } from "./prompt-builder.js";
 
 export interface OrchestratorConfig {
-  defaultAutoLanguage: LanguageCode;
   confidenceThreshold: number;
   maxContextMessages: number;
   sampleRate: number;
@@ -38,16 +36,19 @@ export interface OrchestratorDeps {
 interface SessionRuntime {
   sessionId: string;
   stateMachine: VoiceSessionStateMachine;
-  setting: LanguageSetting;
+  myLanguage: LanguageCode;
+  /** The other person's language — fixed code or "auto" (customer mode). */
+  theirLanguage: LanguageSetting;
+  /** The customer's last heard language (used when theirLanguage is "auto"). */
+  lastCustomerLanguage?: LanguageCode;
   voice?: string;
-  sttLanguage: SttLanguage;
   /** Aborts the current LLM + TTS generation (barge-in / stop). */
   generationAbort?: AbortController;
   /** Timestamps for latency tracking. */
   speechEndTs?: number;
   llmFirstTokenTs?: number;
   ttsFirstAudioTs?: number;
-  /** Accumulated assistant text for the current turn. */
+  /** Accumulated translation text for the current turn. */
   assistantText: string;
   /** Whether a TTS sentence is currently streaming (used to order audio). */
   ttsBusy: boolean;
@@ -63,32 +64,39 @@ interface SessionRuntime {
 /** Split text into sentence-sized chunks at sentence boundaries (incl. Devanagari danda). */
 const SENTENCE_BOUNDARY = /([.!?।]+["')\]?\s]*)/;
 
+/**
+ * Two-way voice translator orchestrator.
+ *
+ * One device sits between two speakers. STT runs with native auto language
+ * detection; every final transcript is translated into the OTHER language of
+ * the session's pair, then spoken aloud via TTS in that language.
+ */
 export class VoiceConversationOrchestrator {
   private readonly sessions = new Map<string, SessionRuntime>();
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
-  async startSession(sessionId: string, setting: LanguageSetting, voice?: string): Promise<void> {
+  async startSession(
+    sessionId: string,
+    myLanguage: LanguageCode,
+    theirLanguage: LanguageSetting,
+    voice?: string,
+  ): Promise<void> {
     if (this.sessions.has(sessionId)) {
       this.deps.logger.warn("startSession called for active session", { sessionId });
       return;
     }
-    const initialLang = this.deps.languageService.normalizeLanguageCode(
-      setting === "auto" ? this.deps.config.defaultAutoLanguage : setting,
-      this.deps.config.defaultAutoLanguage,
-    );
-    const conv = this.deps.conversationManager.create(sessionId, setting, initialLang);
-    // In AUTO mode, let Sarvam detect natively (language_code=auto). When the
-    // user fixes a language, pin STT to that locale for accuracy.
-    const sttLanguage: SttLanguage =
-      setting === AUTO_LANGUAGE ? "auto" : this.deps.languageService.toLocale(setting);
+    const conv = this.deps.conversationManager.create(sessionId, myLanguage, theirLanguage);
+    // Two people take turns speaking, so STT always runs with Sarvam's native
+    // auto-detection (language_code=auto) — each utterance is detected live.
+    const sttLanguage = "auto" as const;
 
     const runtime: SessionRuntime = {
       sessionId,
       stateMachine: new VoiceSessionStateMachine(),
-      setting,
+      myLanguage,
+      theirLanguage,
       voice,
-      sttLanguage,
       assistantText: "",
       ttsBusy: false,
       ttsQueue: [],
@@ -137,7 +145,7 @@ export class VoiceConversationOrchestrator {
     }
   }
 
-  /** Barge-in: user started speaking while AI was talking. */
+  /** Barge-in: someone started speaking while the translation was playing. */
   async interrupt(sessionId: string): Promise<void> {
     const runtime = this.sessions.get(sessionId);
     if (!runtime || !runtime.active) return;
@@ -155,23 +163,23 @@ export class VoiceConversationOrchestrator {
     this.transition(runtime, VoiceSessionState.LISTENING);
   }
 
-  async updateConfig(sessionId: string, setting?: LanguageSetting, voice?: string): Promise<void> {
+  async updateConfig(
+    sessionId: string,
+    myLanguage?: LanguageCode,
+    theirLanguage?: LanguageSetting,
+    voice?: string,
+  ): Promise<void> {
     const runtime = this.sessions.get(sessionId);
     if (!runtime) return;
     const conv = this.deps.conversationManager.get(sessionId);
-    if (setting) {
-      runtime.setting = setting;
-      conv?.setLanguageSetting(setting);
-      const newSttLanguage: SttLanguage =
-        setting === AUTO_LANGUAGE ? "auto" : this.deps.languageService.toLocale(setting);
-      if (newSttLanguage !== runtime.sttLanguage) {
-        runtime.sttLanguage = newSttLanguage;
-        try {
-          await this.deps.speechProvider.updateLanguage(newSttLanguage);
-        } catch (err) {
-          this.deps.logger.warn("STT language update failed", { sessionId, err: String(err) });
-        }
-      }
+    if (
+      (myLanguage && theirLanguage) &&
+      (myLanguage !== runtime.myLanguage || theirLanguage !== runtime.theirLanguage)
+    ) {
+      runtime.myLanguage = myLanguage;
+      runtime.theirLanguage = theirLanguage;
+      runtime.lastCustomerLanguage = undefined;
+      conv?.setLanguagePair(myLanguage, theirLanguage);
     }
     if (voice !== undefined) runtime.voice = voice;
   }
@@ -233,9 +241,9 @@ export class VoiceConversationOrchestrator {
       return;
     }
 
-    // Ignore finals that arrive while the AI is speaking (likely echo) unless
-    // a barge-in is in progress. Barge-in transitions to LISTENING first, so
-    // the genuine interrupting utterance is processed normally.
+    // Ignore finals that arrive while the translation is being spoken (likely
+    // echo) unless a barge-in is in progress. Barge-in transitions to
+    // LISTENING first, so the genuine interrupting utterance is processed.
     if (runtime.stateMachine.state === VoiceSessionState.AI_SPEAKING) {
       return;
     }
@@ -256,24 +264,26 @@ export class VoiceConversationOrchestrator {
     const conv = this.deps.conversationManager.get(runtime.sessionId);
     if (!conv) return;
 
-    // Language adoption policy (code-switching aware).
-    const { adopted, preferred } = this.deps.languageService.shouldAdoptNewLanguage(
+    conv.recordDetection(e.language, e.confidence);
+    // The detected language tells us WHO spoke; the translation target follows
+    // the direction policy (fixed pair or customer "auto" mode).
+    const { target: targetLanguage, newCustomerLanguage } = this.deps.languageService.resolveTranslationTarget(
       e.language,
+      runtime.myLanguage,
+      runtime.theirLanguage,
+      runtime.lastCustomerLanguage,
       e.confidence,
-      conv.getPreferredLanguage(),
       this.deps.config.confidenceThreshold,
-      conv.getLanguageSetting(),
     );
-    if (adopted) {
-      // Persist the new preferred language on the conversation so subsequent
-      // low-confidence turns keep using it (avoids reverting to the default).
-      conv.setPreferredLanguage(preferred);
-      this.deps.eventBus.emit("language_detected", {
-        sessionId: runtime.sessionId,
-        language: preferred,
-        confidence: e.confidence,
-      });
+    if (newCustomerLanguage) {
+      runtime.lastCustomerLanguage = newCustomerLanguage;
+      conv.setLastCustomerLanguage(newCustomerLanguage);
     }
+    this.deps.eventBus.emit("language_detected", {
+      sessionId: runtime.sessionId,
+      language: e.language,
+      confidence: e.confidence,
+    });
 
     conv.addUserMessage(text, e.language, { confidence: e.confidence });
     this.deps.eventBus.emit("user_turn_completed", {
@@ -282,16 +292,16 @@ export class VoiceConversationOrchestrator {
       language: e.language,
     });
 
-    void this.runGeneration(runtime, text, e.language, preferred);
+    void this.runTranslation(runtime, text, e.language, targetLanguage);
   }
 
   // ── LLM + TTS streaming pipeline ──────────────────────────
 
-  private async runGeneration(
+  private async runTranslation(
     runtime: SessionRuntime,
-    userText: string,
-    userLanguage: LanguageCode,
-    preferredLanguage: LanguageCode,
+    utterance: string,
+    sourceLanguage: LanguageCode,
+    targetLanguage: LanguageCode,
   ): Promise<void> {
     const conv = this.deps.conversationManager.get(runtime.sessionId);
     if (!conv || !runtime.active) return;
@@ -309,12 +319,7 @@ export class VoiceConversationOrchestrator {
     }
     this.deps.eventBus.emit("ai_response_started", { sessionId: runtime.sessionId });
 
-    const { messages } = buildPrompt(
-      userText,
-      userLanguage,
-      preferredLanguage,
-      conv.getContext(this.deps.config.maxContextMessages).filter((m) => m.role !== "system"),
-    );
+    const { messages } = buildTranslationPrompt(utterance, sourceLanguage, targetLanguage);
 
     let sentenceBuffer = "";
 
@@ -322,7 +327,7 @@ export class VoiceConversationOrchestrator {
       await this.deps.llmProvider.streamResponse(
         {
           messages,
-          preferredLanguage,
+          preferredLanguage: targetLanguage,
           signal: runtime.generationAbort.signal,
         },
         {
@@ -345,17 +350,16 @@ export class VoiceConversationOrchestrator {
             sentenceBuffer = remainder;
             if (complete.trim()) {
               runtime.ttsQueue.push(complete.trim());
-              void this.drainTtsQueue(runtime, preferredLanguage);
+              void this.drainTtsQueue(runtime, targetLanguage);
             }
           },
-          onComplete: (fullText) => {
+          onComplete: () => {
             runtime.llmDone = true;
             if (sentenceBuffer.trim()) {
               runtime.ttsQueue.push(sentenceBuffer.trim());
               sentenceBuffer = "";
-              void this.drainTtsQueue(runtime, preferredLanguage);
+              void this.drainTtsQueue(runtime, targetLanguage);
             }
-            void fullText;
           },
           onError: (e) => this.onProviderError(runtime, e, "llm"),
         },
@@ -371,7 +375,7 @@ export class VoiceConversationOrchestrator {
       this.deps.eventBus.emit("ai_response_completed", {
         sessionId: runtime.sessionId,
         text: "",
-        language: preferredLanguage,
+        language: targetLanguage,
       });
       this.deps.eventBus.emit("ai_speech_ended", { sessionId: runtime.sessionId });
       this.transition(runtime, VoiceSessionState.LISTENING);

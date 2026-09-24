@@ -2,7 +2,7 @@
 
 ## Overview
 
-DHVANI AI is a real-time voice-to-voice conversational AI built with a domain-first, layered architecture. The system streams audio from the user's microphone through STT → LLM → TTS and back to the speaker with minimal latency, supporting 10 Indian languages with automatic detection and barge-in.
+Airco Talks is a real-time two-way voice translator built with a domain-first, layered architecture. The system streams audio from the microphone through STT → LLM translation → TTS and back to the speaker with minimal latency, supporting 10 Indian languages with automatic per-utterance detection and barge-in.
 
 ## Layered Architecture
 
@@ -16,7 +16,7 @@ DHVANI AI is a real-time voice-to-voice conversational AI built with a domain-fi
 ├─────────────────────────────────────────────────────────┤
 │                    INFRASTRUCTURE (server/)               │
 │  SarvamSpeechProvider, SarvamTtsProvider,                │
-│  CerebrasLlmProvider, DhvaniWebSocketServer,             │
+│  CerebrasLlmProvider, AircoTalksWebSocketServer,             │
 │  ConfigService, ConsoleLogger, TypedErrors               │
 ├─────────────────────────────────────────────────────────┤
 │                    APPLICATION (server/)                  │
@@ -36,7 +36,7 @@ DHVANI AI is a real-time voice-to-voice conversational AI built with a domain-fi
 ## Streaming Pipeline
 
 ```
-Browser Mic
+Browser Mic (either person speaks)
     │ (16 kHz linear16 PCM, base64, ~100ms chunks)
     ▼
 WebSocket ──▶ Orchestrator ──▶ SarvamSpeechProvider
@@ -47,16 +47,20 @@ WebSocket ──▶ Orchestrator ──▶ SarvamSpeechProvider
                                                           │
                                     ┌─────────────────────┘
                                     ▼
-                              PromptBuilder (system + context)
+                              LanguageService (translation direction:
+                              detected language → the OTHER language of the pair)
                                     │
                                     ▼
-                              CerebrasLLMProvider (streaming)
+                              buildTranslationPrompt (system + utterance)
+                                    │
+                                    ▼
+                              CerebrasLLMProvider (streaming translation)
                                     │ (token-by-token)
                                     ▼
                               Sentence Splitter
                                     │ (per sentence)
                                     ▼
-                              SarvamTtsProvider (HTTP stream)
+                              SarvamTtsProvider (HTTP stream, target language)
                                     │ (linear16 PCM, 24kHz)
                                     ▼
                               WebSocket ──▶ Browser AudioPlayer
@@ -65,7 +69,7 @@ WebSocket ──▶ Orchestrator ──▶ SarvamSpeechProvider
                                     │         Speakers ◄
                                     │
                               Barge-in detector (mic level)
-                                    │ (if user speaks during AI speech)
+                                    │ (if someone speaks during playback)
                                     ▼
                               Cancel TTS + stop playback → LISTENING
 ```
@@ -98,7 +102,7 @@ new VoiceConversationOrchestrator({
   languageService: new LanguageService(),
   eventBus: new EventBus(),
   logger: new ConsoleLogger("info"),
-  config: { defaultAutoLanguage: "hi", confidenceThreshold: 0.6, ... },
+  config: { confidenceThreshold: 0.6, ... },
 });
 ```
 
@@ -109,10 +113,10 @@ This makes every provider swappable and every component testable in isolation (s
 All client→server messages are validated with Zod discriminated unions before the orchestrator acts on them. Server→client messages are typed and validated with `isServerMessage()` on the client side.
 
 **Client → Server:**
-- `start_session` — `{ type, sessionId?, language, voice? }`
+- `start_session` — `{ type, sessionId?, myLanguage, theirLanguage, voice? }`
 - `audio_chunk` — `{ type, sessionId, data (base64 PCM) }`
 - `interrupt` — `{ type, sessionId }` (barge-in)
-- `update_config` — `{ type, sessionId, language?, voice? }`
+- `update_config` — `{ type, sessionId, myLanguage?, theirLanguage?, voice? }`
 - `stop_session` — `{ type, sessionId }`
 
 **Server → Client:**
@@ -127,11 +131,12 @@ All client→server messages are validated with Zod discriminated unions before 
 
 The browser uses an AudioWorklet (`public/pcm-processor.js`) for low-latency capture and the Web Audio API (`AudioBufferSourceNode`) for gapless playback.
 
-## Language Detection Strategy
+## Translation Direction Strategy
 
-1. **AUTO mode** (default): STT uses `language_code=auto` (Sarvam native detection). The orchestrator adopts the detected language if confidence ≥ threshold (0.6). The LLM is instructed to respond in the preferred language.
-2. **Fixed mode**: User selects a language in settings. STT is pinned to that locale. The LLM always responds in that language.
-3. **Code-switching**: A few English words in a Marathi sentence do NOT trigger a language switch. Only a full turn in another language (or explicit request) switches.
+1. **Your language is always fixed**: The client sends `myLanguage` (device holder) in `start_session`. `theirLanguage` is either a fixed code or `"auto"`.
+2. **Fixed pair mode**: The detected language decides who spoke; every turn is translated into the other language of the pair. Detections outside the pair are assumed to come from the device holder (the mic is next to them).
+3. **Auto-detect customer mode** (`theirLanguage: "auto"`): The customer's language is unknown up front. Detected languages that differ from `myLanguage` are treated as the customer speaking (translated into `myLanguage`) and remembered (confidence-gated). When the holder speaks, the reply is translated into the customer's last heard language — falling back to English if the customer hasn't been heard yet.
+4. **Code-switching**: A few English words inside a Punjabi sentence do not change the direction — the LLM translates the full utterance into the target language, keeping commonly-used English words where natural.
 
 ## Barge-in
 

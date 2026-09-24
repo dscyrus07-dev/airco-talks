@@ -1,28 +1,30 @@
-import type { LanguageCode, LanguageSetting } from "@dhvani/shared";
-import { AUTO_LANGUAGE } from "@dhvani/shared";
-import { MAX_CONTEXT_MESSAGES } from "@dhvani/shared";
+import type { LanguageCode, LanguageSetting } from "@airco-talks/shared";
+import { MAX_CONTEXT_MESSAGES } from "@airco-talks/shared";
 import type { Message, MessageRole } from "./message.js";
 import { createMessage } from "./message.js";
 
 /**
- * Owns the message array for a session. Other components must not mutate the
- * array directly — they go through {@link ConversationManager}.
+ * Owns the message array for a session plus the language pair being
+ * translated. Other components must not mutate the array directly — they go
+ * through {@link ConversationManager}.
  */
 export class Conversation {
   readonly id: string;
   private readonly messages: Message[] = [];
-  /** The language the assistant currently responds in (sticky across code-switches). */
-  private preferredLanguage: LanguageCode;
-  /** Raw user setting ("auto" or a fixed code). */
-  private languageSetting: LanguageSetting;
+  /** Language of the person holding the device. */
+  private myLanguage: LanguageCode;
+  /** Language of the other person — a fixed code or "auto" (customer mode). */
+  private theirLanguage: LanguageSetting;
+  /** The customer's last heard language (used when theirLanguage is "auto"). */
+  private lastCustomerLanguage?: LanguageCode;
   private lastDetectedLanguage: LanguageCode;
   private lastConfidence = 0;
 
-  constructor(id: string, setting: LanguageSetting, initialLanguage: LanguageCode) {
+  constructor(id: string, myLanguage: LanguageCode, theirLanguage: LanguageSetting) {
     this.id = id;
-    this.languageSetting = setting;
-    this.preferredLanguage = initialLanguage;
-    this.lastDetectedLanguage = initialLanguage;
+    this.myLanguage = myLanguage;
+    this.theirLanguage = theirLanguage;
+    this.lastDetectedLanguage = myLanguage;
   }
 
   add(role: MessageRole, content: string, language: LanguageCode, metadata?: Message["metadata"]): Message {
@@ -48,12 +50,16 @@ export class Conversation {
     return this.messages;
   }
 
-  getPreferredLanguage(): LanguageCode {
-    return this.preferredLanguage;
+  getMyLanguage(): LanguageCode {
+    return this.myLanguage;
   }
 
-  getLanguageSetting(): LanguageSetting {
-    return this.languageSetting;
+  getTheirLanguage(): LanguageSetting {
+    return this.theirLanguage;
+  }
+
+  getLastCustomerLanguage(): LanguageCode | undefined {
+    return this.lastCustomerLanguage;
   }
 
   getLastDetectedLanguage(): LanguageCode {
@@ -64,34 +70,21 @@ export class Conversation {
     return this.lastConfidence;
   }
 
-  setLanguageSetting(setting: LanguageSetting): void {
-    this.languageSetting = setting;
+  /** Swap the direction of translation (who speaks which language). */
+  setLanguagePair(myLanguage: LanguageCode, theirLanguage: LanguageSetting): void {
+    this.myLanguage = myLanguage;
+    this.theirLanguage = theirLanguage;
+    this.lastCustomerLanguage = undefined;
   }
 
-  /**
-   * Adopt a newly detected language as preferred, but only if confidence is
-   * high enough OR the user has fixed the language explicitly. Low-confidence
-   * detections keep the previous preferred language (avoids flapping on a
-   * single borrowed English word).
-   */
-  adoptDetectedLanguage(language: LanguageCode, confidence: number, threshold: number): boolean {
+  /** Remember the customer's language (customer/"auto" mode). */
+  setLastCustomerLanguage(language: LanguageCode): void {
+    this.lastCustomerLanguage = language;
+  }
+
+  recordDetection(language: LanguageCode, confidence: number): void {
     this.lastDetectedLanguage = language;
     this.lastConfidence = confidence;
-    if (this.languageSetting !== AUTO_LANGUAGE) {
-      // User fixed a language; respect it and don't auto-switch.
-      this.preferredLanguage = this.languageSetting;
-      return false;
-    }
-    if (confidence >= threshold) {
-      this.preferredLanguage = language;
-      return true;
-    }
-    return false;
-  }
-
-  /** Force-set the preferred language (used after external policy check). */
-  setPreferredLanguage(language: LanguageCode): void {
-    this.preferredLanguage = language;
   }
 
   reset(): void {

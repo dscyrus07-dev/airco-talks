@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useState } from "react";
-import type { LanguageCode } from "@dhvani/shared";
+import type { LanguageCode } from "@airco-talks/shared";
 
 export interface UIMessage {
   id: string;

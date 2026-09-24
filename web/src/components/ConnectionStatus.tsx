@@ -1,6 +1,5 @@
 "use client";
-
-type Status = "idle" | "connecting" | "connected" | "reconnecting" | "disconnected";
+import type { ConnectionStatus as Status } from "@/lib/websocket-client";
 
 const LABELS: Record<Status, string> = {
   idle: "Not connected",
@@ -10,18 +9,20 @@ const LABELS: Record<Status, string> = {
   disconnected: "Disconnected",
 };
 
-const COLORS: Record<Status, string> = {
-  idle: "bg-slate-500",
-  connecting: "bg-amber-400",
+const DOT: Record<Status, string> = {
+  idle: "bg-danger",
+  connecting: "bg-warn",
   connected: "bg-ok",
-  reconnecting: "bg-amber-400",
+  reconnecting: "bg-warn",
   disconnected: "bg-danger",
 };
 
+/** Compact glass status pill with a live status dot. */
 export function ConnectionStatus({ status }: { status: Status }) {
+  const pulse = status === "reconnecting" || status === "connecting";
   return (
-    <div className="flex items-center gap-2 text-xs text-slate-400" aria-live="polite">
-      <span className={`h-2 w-2 rounded-full ${COLORS[status]} ${status === "reconnecting" || status === "connecting" ? "animate-pulse" : ""}`} />
+    <div className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-xs text-muted" aria-live="polite">
+      <span className={`h-2 w-2 rounded-full ${DOT[status]} ${pulse ? "animate-pulse" : ""}`} aria-hidden />
       <span>{LABELS[status]}</span>
     </div>
   );

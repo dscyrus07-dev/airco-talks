@@ -1,11 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  AUTO_LANGUAGE,
   LANGUAGES,
   getLanguage,
   getLanguageByLocale,
   isLanguageCode,
-} from "@dhvani/shared";
+} from "@airco-talks/shared";
 
 describe("language schema", () => {
   describe("LANGUAGES", () => {
@@ -67,12 +66,6 @@ describe("language schema", () => {
     it("returns false for invalid codes", () => {
       expect(isLanguageCode("xx")).toBe(false);
       expect(isLanguageCode("")).toBe(false);
-    });
-  });
-
-  describe("AUTO_LANGUAGE", () => {
-    it("is the string 'auto'", () => {
-      expect(AUTO_LANGUAGE).toBe("auto");
     });
   });
 });

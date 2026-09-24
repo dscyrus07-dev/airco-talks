@@ -1,4 +1,4 @@
-import { getLanguage, type LanguageCode } from "@dhvani/shared";
+import { getLanguage, type LanguageCode } from "@airco-talks/shared";
 import type { TTSProvider, TTSRequest, TTSStreamHandlers } from "../../domain/interfaces/tts-provider.js";
 import { TTSProviderError } from "../errors/typed-errors.js";
 

@@ -1,72 +1,50 @@
 import { describe, it, expect } from "vitest";
-import { buildPrompt } from "../server/src/application/prompt-builder.js";
-import { AUTO_LANGUAGE } from "@dhvani/shared";
-import type { Message } from "../server/src/domain/entities/message.js";
+import { buildTranslationPrompt } from "../server/src/application/prompt-builder.js";
 
-describe("PromptBuilder", () => {
-  const history: Message[] = [
-    { id: "1", role: "user", content: "हॅलो", language: "mr", timestamp: Date.now() },
-    { id: "2", role: "assistant", content: "नमस्कार!", language: "mr", timestamp: Date.now() },
-  ];
-
-  it("builds a system prompt with the language instruction", () => {
-    const result = buildPrompt("काय चालू आहे?", "mr", "mr", history);
+describe("buildTranslationPrompt", () => {
+  it("names both languages and the direction in the system prompt", () => {
+    const result = buildTranslationPrompt("ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?", "pa", "mr");
+    expect(result.system).toContain("Punjabi");
+    expect(result.system).toContain("ਪੰਜਾਬੀ");
     expect(result.system).toContain("Marathi");
     expect(result.system).toContain("मराठी");
-    expect(result.messages.length).toBe(history.length + 2); // system + history + new user
+  });
+
+  it("sends exactly one system message and one user message", () => {
+    const result = buildTranslationPrompt("ਹੈਲੋ", "pa", "mr");
+    expect(result.messages).toHaveLength(2);
     expect(result.messages[0]?.role).toBe("system");
+    expect(result.messages[1]?.role).toBe("user");
+    expect(result.messages[1]?.content).toBe("ਹੈਲੋ");
   });
 
-  it("includes the new user message at the end", () => {
-    const result = buildPrompt("काय चालू आहे?", "mr", "mr", history);
-    const last = result.messages[result.messages.length - 1];
-    expect(last?.role).toBe("user");
-    expect(last?.content).toBe("काय चालू आहे?");
+  it("forbids answering instead of translating", () => {
+    const result = buildTranslationPrompt("test", "mr", "pa");
+    expect(result.system.toLowerCase()).toContain("only");
+    expect(result.system.toLowerCase()).toContain("translation");
   });
 
-  it("includes history messages in order", () => {
-    const result = buildPrompt("test", "mr", "mr", history);
-    // system + user(hello) + assistant(namaskar) + user(test)
-    expect(result.messages[1]?.content).toBe("हॅलो");
-    expect(result.messages[2]?.content).toBe("नमस्कार!");
+  it("names the source and target languages explicitly", () => {
+    const result = buildTranslationPrompt("test", "pa", "mr");
+    expect(result.system).toContain("Punjabi");
+    expect(result.system).toContain("ਪੰਜਾਬੀ");
+    expect(result.system).toContain("Marathi");
+    expect(result.system).toContain("मराठी");
   });
 
-  it("skips system messages in history (only user/assistant)", () => {
-    const withSystem: Message[] = [
-      { id: "0", role: "system" as never, content: "ignored", language: "mr", timestamp: Date.now() },
-      ...history,
-    ];
-    const result = buildPrompt("test", "mr", "mr", withSystem);
-    // system prompt + 2 history + 1 new = 4
-    expect(result.messages.length).toBe(4);
-  });
-
-  it("instructs the LLM to respond in the preferred language", () => {
-    const result = buildPrompt("test", "hi", "hi", []);
-    expect(result.system.toLowerCase()).toContain("hindi");
-    expect(result.system).toContain("हिन्दी");
-  });
-
-  it("instructs the LLM to keep responses concise for voice", () => {
-    const result = buildPrompt("test", "mr", "mr", []);
-    expect(result.system.toLowerCase()).toContain("concise");
-  });
-
-  it("instructs the LLM not to translate to English", () => {
-    const result = buildPrompt("test", "mr", "mr", []);
-    expect(result.system.toLowerCase()).toContain("translate");
-    expect(result.system.toLowerCase()).toContain("english");
+  it("keeps output speech-ready for TTS", () => {
+    const result = buildTranslationPrompt("test", "hi", "en");
+    expect(result.system.toLowerCase()).toContain("text-to-speech");
   });
 
   it("handles code-switching guidance", () => {
-    const result = buildPrompt("test", "mr", "mr", []);
+    const result = buildTranslationPrompt("test", "mr", "pa");
     expect(result.system.toLowerCase()).toContain("code-switch");
   });
 
-  it("works with empty history", () => {
-    const result = buildPrompt("hello", "en", "en", []);
-    expect(result.messages.length).toBe(2); // system + user
-    expect(result.messages[0]?.role).toBe("system");
-    expect(result.messages[1]?.role).toBe("user");
+  it("works with any supported language pair", () => {
+    const result = buildTranslationPrompt("hello", "en", "ta");
+    expect(result.system).toContain("English");
+    expect(result.system).toContain("Tamil");
   });
 });

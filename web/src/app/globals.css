@@ -2,17 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
+/* ── Theme tokens ────────────────────────────────────────────────
+   Mode (data-mode="light" | "dark") sets surface + text tokens.
+   Accent (data-accent="royal" | "indigo" | ...) sets brand colors.
+   Tailwind reads these via rgb(var(--x-rgb) / <alpha-value>). */
+
+@layer base {
+  :root {
+    --accent-rgb: 37 99 235;
+    --accent-soft-rgb: 96 165 250;
+  }
+
+  :root,
+  [data-mode="dark"] {
+    color-scheme: dark;
+    --bg-grad-1: #0e1730;
+    --bg-grad-2: #0b1224;
+    --bg-grad-3: #070d1d;
+    --ink-rgb: 10 16 34; /* input field bg */
+    --panel-rgb: 20 30 60; /* card bg (glass base) */
+    --sidebar-rgb: 8 14 31; /* sidebar bg (slightly darker than main) */
+    --strong-rgb: 248 250 252; /* primary text */
+    --body-rgb: 203 213 225; /* secondary text */
+    --muted-rgb: 148 163 184; /* tertiary text */
+    --faint-rgb: 100 116 139; /* footer text */
+    --line-rgb: 100 120 180; /* borders (use /15..30) */
+    --wash-rgb: 255 255 255; /* subtle fill (use /5) */
+  }
+
+  [data-mode="light"] {
+    color-scheme: light;
+    --bg-grad-1: #ffffff;
+    --bg-grad-2: #eef2fb;
+    --bg-grad-3: #e2e8f5;
+    --ink-rgb: 244 246 251;
+    --panel-rgb: 255 255 255;
+    --sidebar-rgb: 246 248 253; /* sidebar bg (slightly tinted vs main) */
+    --strong-rgb: 15 23 42;
+    --body-rgb: 51 65 85;
+    --muted-rgb: 100 116 139;
+    --faint-rgb: 148 163 184;
+    --line-rgb: 15 23 42;
+    --wash-rgb: 15 23 42;
+  }
+
+  [data-accent="royal"] {
+    --accent-rgb: 37 99 235;
+    --accent-soft-rgb: 59 130 246;
+  }
+  [data-accent="indigo"] {
+    --accent-rgb: 99 102 241;
+    --accent-soft-rgb: 129 140 248;
+  }
+  [data-accent="emerald"] {
+    --accent-rgb: 16 185 129;
+    --accent-soft-rgb: 52 211 153;
+  }
+  [data-accent="violet"] {
+    --accent-rgb: 139 92 246;
+    --accent-soft-rgb: 167 139 250;
+  }
+  [data-accent="saffron"] {
+    --accent-rgb: 234 138 32;
+    --accent-soft-rgb: 251 191 36;
+  }
 }
 
 html,
 body {
   height: 100%;
   margin: 0;
-  background: radial-gradient(120% 120% at 50% 0%, #121a33 0%, #0b1020 60%, #070a16 100%);
-  color: #e6e9f5;
+  background: radial-gradient(120% 120% at 50% 0%, var(--bg-grad-1) 0%, var(--bg-grad-2) 60%, var(--bg-grad-3) 100%);
+  color: rgb(var(--strong-rgb));
   -webkit-font-smoothing: antialiased;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -25,11 +88,32 @@ body {
   }
 }
 
+@layer utilities {
+  /* Subtle glassmorphism — readable, never overly transparent. */
+  .glass {
+    background: rgb(var(--panel-rgb) / 0.45);
+    border: 1px solid rgb(var(--line-rgb) / 0.18);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .glass-strong {
+    background: rgb(var(--panel-rgb) / 0.6);
+    border: 1px solid rgb(var(--line-rgb) / 0.22);
+    backdrop-filter: blur(18px);
+  }
+  .text-gradient-hero {
+    background: linear-gradient(92deg, #3b82f6 0%, #6366f1 55%, #8b5cf6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
 /* Custom scrollbar for conversation history */
 .scroll-thin::-webkit-scrollbar {
   width: 6px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #2a3556;
+  background: rgb(var(--line-rgb) / 0.15);
   border-radius: 9999px;
 }

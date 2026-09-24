@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import type { LanguageCode } from "@dhvani/shared";
+import type { LanguageCode } from "@airco-talks/shared";
 import type {
   SpeechRecognitionProvider,
   StartSpeechSessionOptions,

@@ -89,10 +89,13 @@ function base64PcmToFloat32(base64: string): Float32Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const view = new DataView(bytes.buffer);
-  const samples = bytes.length / 2;
-  const out = new Float32Array(samples);
-  for (let i = 0; i < samples; i++) {
+  // A network chunk can be truncated mid-sample (odd byte count); drop the
+  // trailing byte so DataView reads never go out of bounds.
+  const sampleCount = Math.floor(bytes.length / 2);
+  if (sampleCount === 0) return new Float32Array(0);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, sampleCount * 2);
+  const out = new Float32Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
     const int16 = view.getInt16(i * 2, true); // little-endian
     out[i] = int16 / 0x8000;
   }

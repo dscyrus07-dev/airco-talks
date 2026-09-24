@@ -3,7 +3,7 @@ import {
   VoiceSessionState,
   isValidTransition,
   STATE_LABELS,
-} from "@dhvani/shared";
+} from "@airco-talks/shared";
 
 describe("VoiceSessionState", () => {
   describe("isValidTransition", () => {

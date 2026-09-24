@@ -1,4 +1,4 @@
-import type { LanguageCode, LanguageSetting } from "@dhvani/shared";
+import type { LanguageCode, LanguageSetting } from "@airco-talks/shared";
 import { Conversation } from "../domain/entities/conversation.js";
 
 /**
@@ -10,10 +10,10 @@ import { Conversation } from "../domain/entities/conversation.js";
 export class ConversationManager {
   private readonly conversations = new Map<string, Conversation>();
 
-  create(sessionId: string, setting: LanguageSetting, initialLanguage: LanguageCode): Conversation {
+  create(sessionId: string, myLanguage: LanguageCode, theirLanguage: LanguageSetting): Conversation {
     const existing = this.conversations.get(sessionId);
     if (existing) return existing;
-    const conv = new Conversation(sessionId, setting, initialLanguage);
+    const conv = new Conversation(sessionId, myLanguage, theirLanguage);
     this.conversations.set(sessionId, conv);
     return conv;
   }
@@ -22,8 +22,8 @@ export class ConversationManager {
     return this.conversations.get(sessionId);
   }
 
-  getOrCreate(sessionId: string, setting: LanguageSetting, initialLanguage: LanguageCode): Conversation {
-    return this.conversations.get(sessionId) ?? this.create(sessionId, setting, initialLanguage);
+  getOrCreate(sessionId: string, myLanguage: LanguageCode, theirLanguage: LanguageSetting): Conversation {
+    return this.conversations.get(sessionId) ?? this.create(sessionId, myLanguage, theirLanguage);
   }
 
   remove(sessionId: string): void {

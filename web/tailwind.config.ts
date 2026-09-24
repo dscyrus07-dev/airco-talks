@@ -5,12 +5,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#0b1020",
-        panel: "#121a33",
-        accent: "#6366f1",
-        accentSoft: "#818cf8",
+        // Semantic tokens backed by CSS variables (see globals.css).
+        // Values switch automatically with data-mode / data-accent.
+        ink: "rgb(var(--ink-rgb) / <alpha-value>)",
+        panel: "rgb(var(--panel-rgb) / <alpha-value>)",
+        sidebar: "rgb(var(--sidebar-rgb) / <alpha-value>)",
+        strong: "rgb(var(--strong-rgb) / <alpha-value>)",
+        body: "rgb(var(--body-rgb) / <alpha-value>)",
+        muted: "rgb(var(--muted-rgb) / <alpha-value>)",
+        faint: "rgb(var(--faint-rgb) / <alpha-value>)",
+        line: "rgb(var(--line-rgb) / <alpha-value>)",
+        wash: "rgb(var(--wash-rgb) / <alpha-value>)",
+        accent: "rgb(var(--accent-rgb) / <alpha-value>)",
+        accentSoft: "rgb(var(--accent-soft-rgb) / <alpha-value>)",
         danger: "#ef4444",
         ok: "#22c55e",
+        warn: "#fbbf24",
       },
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Noto Sans", "sans-serif"],

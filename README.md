@@ -1,10 +1,18 @@
-# Airco DHVANI AI
+# Airco Talks
 
-Real-time, voice-first AI chatbot that listens, understands, and responds in your native Indian language. Built for low-latency natural conversation with barge-in support.
+Real-time, two-way voice translator for Indian languages. Two people who don't share a language talk face-to-face: each speaks their own language, and Airco Talks translates every utterance aloud into the other person's language. Built for low latency with barge-in support.
+
+## How It Works
+
+1. Pick **your language** (e.g. Hindi) and the **customer's language** — or leave the customer's language on **Auto-detect**.
+2. The customer speaks in their language. Airco Talks detects it, translates it into your language, and speaks it aloud for you.
+3. You reply in your language. Airco Talks translates it into the customer's language and speaks it aloud for them.
+
+With **Auto-detect**, the customer's language is detected from their first utterance and remembered — you never need to know what language they speak. It works like Google Translate's conversation mode — voice in, voice out, both directions.
 
 ## Supported Languages
 
-Marathi, Hindi, English, Gujarati, Tamil, Telugu, Kannada, Malayalam, Bengali, Punjabi — with automatic language detection.
+Marathi, Hindi, English, Gujarati, Tamil, Telugu, Kannada, Malayalam, Bengali, Punjabi — with automatic per-utterance language detection.
 
 ## Architecture
 
@@ -44,7 +52,7 @@ cp .env.example .env
 npm run build --workspace shared
 ```
 
-### Run
+### Run (local development only)
 
 ```bash
 # Terminal 1: backend WebSocket server (port 8080)
@@ -54,13 +62,13 @@ npm run dev --workspace server
 npm run dev --workspace web
 ```
 
-Open [http://localhost:3000](http://localhost:3000), tap the microphone button, and start speaking.
+Open [http://localhost:3000](http://localhost:3000), pick the two languages in Settings, tap the microphone, and start talking.
 
 ### Quality Gate
 
 ```bash
 npm run typecheck   # all packages
-npm test            # 110+ unit + integration tests
+npm test            # 100+ unit + integration tests
 npm run build       # all packages
 ```
 
@@ -77,25 +85,26 @@ npm run build       # all packages
 ├── server/              # Backend WebSocket server
 │   └── src/
 │       ├── domain/          # Entities, events, state machine, provider interfaces
-│       ├── application/     # Orchestrator, conversation manager, language service, prompt builder
+│       ├── application/     # Orchestrator, conversation manager, language service, translation prompt
 │       ├── infrastructure/  # Sarvam STT/TTS, Cerebras LLM, WebSocket server, config, logger
 │       └── main.ts          # DI wiring + startup
 ├── web/                 # Next.js frontend
 │   └── src/
 │       ├── app/         # Next.js App Router (layout, page, globals)
-│       ├── components/  # MicrophoneButton, AudioWaveform, StateIndicator, etc.
+│       ├── components/  # MicrophoneButton, LiveTranscript, SettingsPanel, etc.
 │       ├── hooks/       # useVoiceSession, useWebSocket, useMicrophone, useAudioPlayback
 │       └── lib/         # WebSocket client, audio recorder (AudioWorklet), audio player
-└── tests/               # Vitest unit + integration tests (110+ tests)
+└── tests/               # Vitest unit + integration tests
 ```
 
 ## Key Features
 
-- **Voice-first**: Tap to speak, listen to the response. Text is secondary.
-- **Automatic language detection**: Speak any supported language; the AI detects and responds in kind.
-- **Barge-in**: Speak while the AI is talking — it stops, listens, and responds to your interruption.
-- **Low latency**: Streaming STT → streaming LLM → streaming TTS → immediate PCM playback.
-- **Code-switching**: Hindi-English, Marathi-English mixed speech is handled naturally.
+- **Two-way voice translation**: Each side hears the other in their own language — no menus, no typing.
+- **Auto-detect customer mode**: Select only YOUR language; the customer's language is detected automatically and remembered for your replies.
+- **Automatic language detection per turn**: Whoever speaks, Sarvam detects the language and the translation flips direction automatically.
+- **Barge-in**: Speak while the translation is playing — it stops, listens, and translates the interruption.
+- **Low latency**: Streaming STT → streaming LLM translation → streaming TTS → immediate PCM playback.
+- **Code-switching**: Hindi-English, Punjabi-English mixed speech is translated naturally.
 - **Privacy**: Audio is processed in real-time and not permanently stored.
 
 ## Manual Testing

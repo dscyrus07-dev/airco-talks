@@ -11,7 +11,7 @@ import { SarvamSpeechProvider } from "./infrastructure/sarvam-stt/sarvam-speech-
 import { SarvamTtsProvider } from "./infrastructure/sarvam-tts/sarvam-tts-provider.js";
 import { CerebrasLlmProvider } from "./infrastructure/cerebras-llm/cerebras-llm-provider.js";
 import { VoiceConversationOrchestrator } from "./application/voice-conversation-orchestrator.js";
-import { DhvaniWebSocketServer } from "./infrastructure/websocket/websocket-server.js";
+import { AircoTalksWebSocketServer } from "./infrastructure/websocket/websocket-server.js";
 
 async function main(): Promise<void> {
   const config = new ConfigService().config;
@@ -38,19 +38,32 @@ async function main(): Promise<void> {
     eventBus,
     logger,
     config: {
-      defaultAutoLanguage: config.defaultAutoLanguage,
       confidenceThreshold: config.confidenceThreshold,
       maxContextMessages: config.maxContextMessages,
       sampleRate: config.sampleRate,
     },
   });
 
-  const server = new DhvaniWebSocketServer({
+  // Real provider readiness for GET /health (60s cache to avoid hammering APIs).
+  let healthCache: { at: number; providers: Record<string, boolean> } | null = null;
+  const providerHealth = async (): Promise<Record<string, boolean>> => {
+    if (healthCache && Date.now() - healthCache.at < 60_000) return healthCache.providers;
+    const [stt, tts, llm] = await Promise.all([
+      speechProvider.healthCheck().catch(() => false),
+      ttsProvider.healthCheck().catch(() => false),
+      llmProvider.healthCheck().catch(() => false),
+    ]);
+    healthCache = { at: Date.now(), providers: { "sarvam-stt": stt, "sarvam-tts": tts, cerebras: llm } };
+    return healthCache.providers;
+  };
+
+  const server = new AircoTalksWebSocketServer({
     orchestrator,
     eventBus,
     logger,
     port: config.port,
-    allowedOrigin: config.webOrigin,
+    allowedOrigins: config.webOrigins,
+    providerHealth,
   });
 
   await server.start();

@@ -1,5 +1,5 @@
 /**
- * Canonical language definitions for Airco DHVANI AI.
+ * Canonical language definitions for Airco Talks.
  *
  * Every other module references {@link LanguageCode} and {@link LANGUAGES}
  * instead of raw strings, so language-specific logic stays in one place and
@@ -34,8 +34,7 @@ export interface LanguageDefinition {
 }
 
 /**
- * Ordered list of supported languages. The first entry is the AUTO fallback
- * default unless overridden by DEFAULT_AUTO_LANGUAGE.
+ * Ordered list of supported languages available for a translation pair.
  */
 export const LANGUAGES: readonly LanguageDefinition[] = [
   { code: "hi", locale: "hi-IN", name: "Hindi", endonym: "हिन्दी", defaultVoice: "rahul" },
@@ -74,7 +73,11 @@ export function getLanguageByLocale(locale: string): LanguageDefinition | undefi
   return LANGUAGE_BY_LOCALE.get(locale);
 }
 
-/** "AUTO" sentinel used in settings; not a real LanguageCode. */
+/**
+ * "AUTO" sentinel for the customer's language: the system detects whatever
+ * language the other person speaks and remembers it for replies.
+ * Not a real LanguageCode.
+ */
 export const AUTO_LANGUAGE = "auto" as const;
 export type LanguageSetting = typeof AUTO_LANGUAGE | LanguageCode;
 

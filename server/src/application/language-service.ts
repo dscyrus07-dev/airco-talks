@@ -6,11 +6,15 @@ import {
   getLanguage,
   getLanguageByLocale,
   isLanguageCode,
-} from "@dhvani/shared";
+} from "@airco-talks/shared";
+
+/** Fallback target when the customer's language is "auto" but not yet heard. */
+export const AUTO_CUSTOMER_FALLBACK: LanguageCode = "en";
 
 /**
- * Single place for language normalization, mapping, and the code-switching
- * policy. No other module decides when to switch the conversation language.
+ * Single place for language normalization, mapping, and the translation
+ * direction policy. No other module decides which language a turn is
+ * translated into.
  */
 export class LanguageService {
   /** Normalize any provider/string input to a canonical LanguageCode. */
@@ -48,37 +52,44 @@ export class LanguageService {
   }
 
   /**
-   * Resolve the effective STT locale for a session given the user setting and
-   * the last known preferred language. In AUTO mode we start from the last
-   * detected language (or the configured default) and refine later.
-   */
-  resolveSttLocale(setting: LanguageSetting, preferred: LanguageCode, defaultAuto: LanguageCode): LanguageLocale {
-    const code = setting === AUTO_LANGUAGE ? (preferred ?? defaultAuto) : setting;
-    return this.toLocale(code);
-  }
-
-  /**
-   * Code-switching policy. Returns the new preferred language, or the current
-   * one if we should NOT switch (low confidence or fixed user setting).
+   * Translation direction policy.
    *
-   * A single borrowed English word in a Marathi sentence must not flip the
-   * whole conversation to English — that is handled by the confidence gate
-   * and by the LLM responding in the preferred language regardless.
+   * myLanguage is always the device holder's fixed language. theirSetting is
+   * either the other person's fixed language or "auto":
+   *
+   * FIXED theirLanguage (original two-language mode):
+   *  - detected == theirLanguage → the other person spoke → target myLanguage
+   *  - otherwise (detected == myLanguage or outside the pair) → assume the
+   *    device holder spoke → target theirLanguage
+   *
+   * AUTO theirLanguage (customer mode):
+   *  - detected == myLanguage → the holder spoke → target the customer's
+   *    last heard language (fallback "en" if nothing heard yet)
+   *  - detected != myLanguage → the customer spoke → target myLanguage, and
+   *    remember the detected language for future replies (only when the
+   *    detection confidence clears the threshold, to avoid flapping).
    */
-  shouldAdoptNewLanguage(
+  resolveTranslationTarget(
     detected: LanguageCode,
+    myLanguage: LanguageCode,
+    theirSetting: LanguageSetting,
+    lastCustomerLanguage: LanguageCode | undefined,
     confidence: number,
-    current: LanguageCode,
     threshold: number,
-    setting: LanguageSetting,
-  ): { adopted: boolean; preferred: LanguageCode } {
-    if (setting !== AUTO_LANGUAGE) {
-      return { adopted: false, preferred: setting };
+  ): { target: LanguageCode; newCustomerLanguage?: LanguageCode } {
+    if (theirSetting !== AUTO_LANGUAGE) {
+      return { target: detected === theirSetting ? myLanguage : theirSetting };
     }
-    if (confidence >= threshold && detected !== current) {
-      return { adopted: true, preferred: detected };
+    if (detected === myLanguage) {
+      // The holder replied — speak to the customer in their last heard language.
+      return { target: lastCustomerLanguage ?? AUTO_CUSTOMER_FALLBACK };
     }
-    return { adopted: false, preferred: current };
+    // Someone other than the holder spoke; translate for the holder and
+    // remember the customer's language (confidence-gated to avoid flapping).
+    return {
+      target: myLanguage,
+      newCustomerLanguage: confidence >= threshold ? detected : undefined,
+    };
   }
 
   /**

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LanguageService } from "../server/src/application/language-service.js";
-import { AUTO_LANGUAGE } from "@dhvani/shared";
+import { AUTO_LANGUAGE } from "@airco-talks/shared";
 
 describe("LanguageService", () => {
   const service = new LanguageService();
@@ -42,6 +42,7 @@ describe("LanguageService", () => {
       expect(service.toLocale("mr")).toBe("mr-IN");
       expect(service.toLocale("hi")).toBe("hi-IN");
       expect(service.toLocale("en")).toBe("en-IN");
+ expect(service.toLocale("pa")).toBe("pa-IN");
     });
   });
 
@@ -56,43 +57,55 @@ describe("LanguageService", () => {
     });
   });
 
-  describe("resolveSttLocale", () => {
-    it("uses preferred language in AUTO mode", () => {
-      expect(service.resolveSttLocale(AUTO_LANGUAGE, "mr", "hi")).toBe("mr-IN");
+  describe("resolveTranslationTarget", () => {
+    it("translates the device holder's language into the other person's (fixed pair)", () => {
+      expect(service.resolveTranslationTarget("pa", "pa", "mr", undefined, 0.95, 0.6).target).toBe("mr");
     });
 
-    it("uses default when preferred is not set", () => {
-      expect(service.resolveSttLocale(AUTO_LANGUAGE, "hi", "mr")).toBe("hi-IN");
+    it("translates the other person's speech back for the device holder (fixed pair)", () => {
+      expect(service.resolveTranslationTarget("mr", "pa", "mr", undefined, 0.95, 0.6).target).toBe("pa");
     });
 
-    it("uses the fixed setting when not AUTO", () => {
-      expect(service.resolveSttLocale("mr", "hi", "hi")).toBe("mr-IN");
-    });
-  });
-
-  describe("shouldAdoptNewLanguage", () => {
-    it("adopts a new language when confidence is above threshold", () => {
-      const result = service.shouldAdoptNewLanguage("mr", 0.95, "hi", 0.6, AUTO_LANGUAGE);
-      expect(result.adopted).toBe(true);
-      expect(result.preferred).toBe("mr");
+    it("assumes the device holder spoke when detection is outside a fixed pair", () => {
+      expect(service.resolveTranslationTarget("hi", "pa", "mr", undefined, 0.95, 0.6).target).toBe("mr");
     });
 
-    it("does not adopt when confidence is below threshold", () => {
-      const result = service.shouldAdoptNewLanguage("mr", 0.4, "hi", 0.6, AUTO_LANGUAGE);
-      expect(result.adopted).toBe(false);
-      expect(result.preferred).toBe("hi");
+    it("handles an inverted fixed pair", () => {
+      expect(service.resolveTranslationTarget("mr", "mr", "pa", undefined, 0.95, 0.6).target).toBe("pa");
+      expect(service.resolveTranslationTarget("pa", "mr", "pa", undefined, 0.95, 0.6).target).toBe("mr");
     });
 
-    it("does not adopt when the setting is a fixed language", () => {
-      const result = service.shouldAdoptNewLanguage("mr", 0.99, "hi", 0.6, "hi");
-      expect(result.adopted).toBe(false);
-      expect(result.preferred).toBe("hi");
+    it("auto mode: customer speech is translated into the holder's language", () => {
+      const result = service.resolveTranslationTarget("mr", "hi", AUTO_LANGUAGE, undefined, 0.95, 0.6);
+      expect(result.target).toBe("hi");
+      expect(result.newCustomerLanguage).toBe("mr");
     });
 
-    it("does not adopt the same language again", () => {
-      const result = service.shouldAdoptNewLanguage("mr", 0.99, "mr", 0.6, AUTO_LANGUAGE);
-      expect(result.adopted).toBe(false);
-      expect(result.preferred).toBe("mr");
+    it("auto mode: the holder's reply is translated into the customer's last heard language", () => {
+      const result = service.resolveTranslationTarget("hi", "hi", AUTO_LANGUAGE, "mr", 0.95, 0.6);
+      expect(result.target).toBe("mr");
+      expect(result.newCustomerLanguage).toBeUndefined();
+    });
+
+    it("auto mode: falls back to English when the holder speaks before the customer is heard", () => {
+      const result = service.resolveTranslationTarget("hi", "hi", AUTO_LANGUAGE, undefined, 0.95, 0.6);
+      expect(result.target).toBe("en");
+    });
+
+    it("auto mode: does not remember the customer language on low confidence", () => {
+      const result = service.resolveTranslationTarget("ta", "hi", AUTO_LANGUAGE, "mr", 0.4, 0.6);
+      expect(result.target).toBe("hi");
+      expect(result.newCustomerLanguage).toBeUndefined();
+    });
+
+    it("auto mode: keeps direction stable across alternating turns", () => {
+      // Customer speaks Tamil → holder hears Hindi, customer language remembered.
+      const first = service.resolveTranslationTarget("ta", "hi", AUTO_LANGUAGE, undefined, 0.95, 0.6);
+      expect(first.target).toBe("hi");
+      expect(first.newCustomerLanguage).toBe("ta");
+      // Holder replies in Hindi → customer hears Tamil.
+      const second = service.resolveTranslationTarget("hi", "hi", AUTO_LANGUAGE, "ta", 0.95, 0.6);
+      expect(second.target).toBe("ta");
     });
   });
 

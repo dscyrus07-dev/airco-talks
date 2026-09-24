@@ -1,4 +1,4 @@
-import type { LanguageCode } from "@dhvani/shared";
+import type { LanguageCode } from "@airco-talks/shared";
 
 export type MessageRole = "user" | "assistant" | "system";
 

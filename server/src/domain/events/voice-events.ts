@@ -1,5 +1,5 @@
-import type { LanguageCode } from "@dhvani/shared";
-import type { VoiceSessionState } from "@dhvani/shared";
+import type { LanguageCode } from "@airco-talks/shared";
+import type { VoiceSessionState } from "@airco-talks/shared";
 
 /** Discriminated map of all internal voice-pipeline events (typed payloads). */
 export interface VoiceEventMap {

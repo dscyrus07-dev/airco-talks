@@ -94,3 +94,38 @@
 - 3 consecutive frames (~240ms) above threshold avoids false triggers from AI audio bleeding into the mic
 - `echoCancellation: true` in `getUserMedia` further reduces self-triggering
 - The server-side orchestrator handles the actual cancellation (abort TTS, stop playback, transition state)
+
+## Product Pivot: Chatbot → Two-Way Voice Translator (Airco Talks)
+
+**Decision**: Repurpose the voice pipeline from a conversational AI ("Airco Geetika") into a two-way, face-to-face voice translator ("Airco Talks"). One device sits between two speakers; each spoken turn is translated into the other person's language and spoken aloud.
+
+**Rationale**:
+- The existing pipeline (streaming STT → LLM → streaming TTS) is exactly the shape a translator needs; only the LLM's job changes from "reply" to "translate faithfully", plus a direction policy.
+- Sarvam STT already reports the detected language with `language_probability` on every final transcript, so the translation direction can flip per utterance with no extra round-trips.
+- Single-device conversation mode (like Google Translate's conversation mode) needs no pairing, rooms, or accounts — the simplest useful product.
+
+**Direction policy** (LanguageService.resolveTranslationTarget):
+- detected == myLanguage → translate into theirLanguage
+- detected == theirLanguage → translate into myLanguage
+- detected outside the pair → assume the device holder spoke → translate into theirLanguage
+
+**Prompt policy**: The LLM is instructed to output ONLY the translation — never answer, continue, or comment on the speaker's words. This is the key difference from the old chatbot system prompt.
+
+**Alternatives considered**:
+- **Two devices with room pairing**: lower echo risk, but adds pairing/relay infrastructure. Deferred until the single-device flow is validated locally.
+- **Dedicated translation API**: Sarvam's machine-translation endpoint is batch-oriented; the streaming LLM path reuses the existing low-latency pipeline end to end.
+
+## Auto-Detect Customer Mode
+
+**Decision**: Allow `theirLanguage: "auto"` in the session config. The user selects only their own language; the customer's language is detected from their speech and remembered for translating the user's replies.
+
+**Rationale**:
+- A shopkeeper/agent often does not know what language a walk-in customer speaks — asking them to pick two languages defeats the purpose.
+- Sarvam's per-utterance detection already reports the language; "who spoke" follows from comparing the detection against `myLanguage`.
+- The customer's language is remembered per session (confidence-gated at 0.6 to avoid flapping on misheard words), so replies go to the right language without re-detection round-trips.
+- If the holder speaks before the customer is ever heard, the reply falls back to English (the most common lingua franca) rather than staying silent.
+
+**Policy** (LanguageService.resolveTranslationTarget):
+- theirLanguage fixed → same two-language policy as before
+- theirLanguage == "auto" and detected != myLanguage → customer spoke → target myLanguage, remember detected language
+- theirLanguage == "auto" and detected == myLanguage → holder spoke → target the customer's last heard language (fallback "en")

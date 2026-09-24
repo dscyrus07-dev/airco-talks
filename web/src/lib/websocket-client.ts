@@ -1,4 +1,4 @@
-import { isServerMessage, type ClientMessage, type ServerMessage } from "@dhvani/shared";
+import { isServerMessage, type ClientMessage, type ServerMessage } from "@airco-talks/shared";
 
 export type ServerMessageHandler = (message: ServerMessage) => void;
 export type ConnectionStatus = "idle" | "connecting" | "connected" | "reconnecting" | "disconnected";

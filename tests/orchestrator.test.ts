@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { VoiceSessionState, AUTO_LANGUAGE } from "@dhvani/shared";
+import { VoiceSessionState, type LanguageCode } from "@airco-talks/shared";
 import { EventBus } from "../server/src/domain/event-bus.js";
 import { VoiceConversationOrchestrator } from "../server/src/application/voice-conversation-orchestrator.js";
 import { ConversationManager } from "../server/src/application/conversation-manager.js";
@@ -43,10 +43,10 @@ class MockSpeechProvider implements SpeechRecognitionProvider {
   }
 
   /** Test helper: simulate a final transcript from the STT provider. */
-  emitFinal(text: string, language: "mr" | "hi" | "en", confidence = 0.95): void {
+  emitFinal(text: string, language: LanguageCode, confidence = 0.95): void {
     this.handlers.onFinalTranscript?.({ text, language, confidence });
   }
-  emitPartial(text: string, language: "mr" | "hi" | "en"): void {
+  emitPartial(text: string, language: LanguageCode): void {
     this.handlers.onPartialTranscript?.({ text, language });
   }
 }
@@ -123,7 +123,6 @@ describe("VoiceConversationOrchestrator", () => {
       eventBus,
       logger: new MockLogger(),
       config: {
-        defaultAutoLanguage: "hi",
         confidenceThreshold: 0.6,
         maxContextMessages: 12,
         sampleRate: 16000,
@@ -132,82 +131,100 @@ describe("VoiceConversationOrchestrator", () => {
   });
 
   it("starts a session and opens the STT provider with auto language", async () => {
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
+    await orchestrator.startSession("s1", "pa", "mr", "");
     expect(speech.startCalls).toHaveLength(1);
     expect(speech.startCalls[0]?.language).toBe("auto");
   });
 
-  it("starts a session with a fixed language and passes the locale to STT", async () => {
-    await orchestrator.startSession("s1", "mr", "");
-    expect(speech.startCalls[0]?.language).toBe("mr-IN");
-  });
-
   it("forwards audio chunks to the STT provider", async () => {
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
+    await orchestrator.startSession("s1", "pa", "mr", "");
     await orchestrator.handleAudioChunk("s1", new Uint8Array([1, 2, 3]));
     await orchestrator.handleAudioChunk("s1", new Uint8Array([4, 5, 6]));
     expect(speech.audioChunks).toHaveLength(2);
   });
 
-  it("processes a final transcript through LLM → TTS pipeline", async () => {
-    const states: VoiceSessionState[] = [];
-    eventBus.on("state_changed", (p) => states.push(p.to));
-
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
-    speech.emitFinal("हॅलो", "mr", 0.95);
-
-    // Allow microtasks to flush (the pipeline is async).
+  it("translates a Punjabi utterance into Marathi (myLanguage → theirLanguage)", async () => {
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?", "pa", 0.95);
     await flushMicrotasks();
 
     expect(llm.streamCalls).toHaveLength(1);
-    // The orchestrator splits the LLM response into sentences and streams each
-    // to TTS separately. "नमस्कार! मी ठीक आहे." → 2 sentences.
+    // The system prompt must instruct translation into the OTHER language.
+    const system = llm.streamCalls[0]?.messages.find((m) => m.role === "system");
+    expect(system?.content).toContain("Marathi");
+    expect(system?.content).toContain("मराठी");
+    // TTS speaks the translation in the target language.
     expect(tts.streamCalls.length).toBeGreaterThanOrEqual(1);
-    expect(llm.streamCalls[0]?.messages.length).toBeGreaterThan(0);
+    expect(tts.streamCalls[0]?.language).toBe("mr");
   });
 
-  it("emits language_detected when a new language is adopted in AUTO mode", async () => {
+  it("translates the reply back: Marathi speech → Punjabi", async () => {
+    llm.responseText = "ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?";
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("कसे आहात?", "mr", 0.95);
+    await flushMicrotasks();
+
+    const system = llm.streamCalls[0]?.messages.find((m) => m.role === "system");
+    expect(system?.content).toContain("Punjabi");
+    expect(tts.streamCalls[0]?.language).toBe("pa");
+  });
+
+  it("auto mode: customer speech is translated into the holder's language and remembered", async () => {
+    llm.responseText = "नमस्ते";
+    await orchestrator.startSession("s1", "hi", "auto", "");
+    speech.emitFinal("வணக்கம்", "ta", 0.95);
+    await flushMicrotasks();
+
+    // Customer spoke Tamil → translation is spoken in Hindi (holder's language).
+    expect(tts.streamCalls[0]?.language).toBe("hi");
+  });
+
+  it("auto mode: the holder's reply is translated into the customer's last heard language", async () => {
+    llm.responseText = "வணக்கம்";
+    await orchestrator.startSession("s1", "hi", "auto", "");
+    // Customer speaks Tamil first (remembered).
+    speech.emitFinal("வணக்கம்", "ta", 0.95);
+    await flushMicrotasks();
+    // Holder replies in Hindi → TTS speaks Tamil.
+    speech.emitFinal("नमस्ते", "hi", 0.95);
+    await flushMicrotasks();
+
+    const replyCalls = tts.streamCalls.filter((c) => c.language === "ta");
+    expect(replyCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("auto mode: falls back to English if the holder speaks before the customer is heard", async () => {
+    llm.responseText = "Hello";
+    await orchestrator.startSession("s1", "hi", "auto", "");
+    speech.emitFinal("नमस्ते", "hi", 0.95);
+    await flushMicrotasks();
+
+    expect(tts.streamCalls[0]?.language).toBe("en");
+  });
+
+  it("emits language_detected for each detected language", async () => {
     const detected: { language: string; confidence: number }[] = [];
     eventBus.on("language_detected", (p) => detected.push({ language: p.language, confidence: p.confidence }));
 
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
-    speech.emitFinal("नमस्कार", "mr", 0.95);
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", 0.95);
     await flushMicrotasks();
 
     expect(detected).toHaveLength(1);
-    expect(detected[0]?.language).toBe("mr");
-  });
-
-  it("does not emit language_detected when language is fixed", async () => {
-    const detected = vi.fn();
-    eventBus.on("language_detected", detected);
-
-    await orchestrator.startSession("s1", "hi", "");
-    speech.emitFinal("नमस्कार", "mr", 0.95);
-    await flushMicrotasks();
-
-    expect(detected).not.toHaveBeenCalled();
+    expect(detected[0]?.language).toBe("pa");
   });
 
   it("interrupt cancels ongoing TTS playback", async () => {
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
-    speech.emitFinal("हॅलो", "mr", 0.95);
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਹੈਲੋ", "pa", 0.95);
     await flushMicrotasks();
 
     // Interrupt should not throw even if TTS is mid-stream.
     await orchestrator.interrupt("s1");
   });
 
-  it("updateConfig changes the STT language live", async () => {
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
-    expect(speech.updateCalls).toHaveLength(0);
-
-    await orchestrator.updateConfig("s1", "mr", "");
-    expect(speech.updateCalls).toContain("mr-IN");
-  });
-
   it("stopSession closes the STT provider", async () => {
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
+    await orchestrator.startSession("s1", "pa", "mr", "");
     expect(speech.stopped).toBe(false);
     await orchestrator.stopSession("s1");
     expect(speech.stopped).toBe(true);
@@ -217,8 +234,8 @@ describe("VoiceConversationOrchestrator", () => {
     const latencies: { speechEndToFirstAudioMs?: number }[] = [];
     eventBus.on("latency", (p) => latencies.push(p));
 
-    await orchestrator.startSession("s1", AUTO_LANGUAGE, "");
-    speech.emitFinal("हॅलो", "mr", 0.95);
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਹੈਲੋ", "pa", 0.95);
     await flushMicrotasks();
 
     expect(latencies.length).toBeGreaterThanOrEqual(0);

@@ -2,21 +2,27 @@ import { describe, it, expect } from "vitest";
 import {
   parseClientMessage,
   isServerMessage,
-} from "@dhvani/shared";
+} from "@airco-talks/shared";
 
 // Valid UUID for tests (not a real one, but RFC 4122 formatted).
 const UUID = "12345678-1234-4234-8234-123456789abc";
 
 describe("WebSocket protocol", () => {
   describe("parseClientMessage", () => {
-    it("parses a valid start_session message", () => {
-      const msg = { type: "start_session", language: "auto", voice: "shubh" };
+    it("parses a valid start_session message with a language pair", () => {
+      const msg = { type: "start_session", myLanguage: "pa", theirLanguage: "mr", voice: "rohan" };
+      const parsed = parseClientMessage(msg);
+      expect(parsed.type).toBe("start_session");
+    });
+
+    it("parses a start_session with auto-detected customer language", () => {
+      const msg = { type: "start_session", myLanguage: "hi", theirLanguage: "auto" };
       const parsed = parseClientMessage(msg);
       expect(parsed.type).toBe("start_session");
     });
 
     it("parses a start_session with explicit sessionId", () => {
-      const msg = { type: "start_session", sessionId: UUID, language: "mr" };
+      const msg = { type: "start_session", sessionId: UUID, myLanguage: "pa", theirLanguage: "mr" };
       const parsed = parseClientMessage(msg);
       expect(parsed.type).toBe("start_session");
       expect(parsed.sessionId).toBe(UUID);
@@ -42,7 +48,7 @@ describe("WebSocket protocol", () => {
     });
 
     it("parses an update_config message", () => {
-      const msg = { type: "update_config", sessionId: UUID, language: "hi", voice: "ritu" };
+      const msg = { type: "update_config", sessionId: UUID, myLanguage: "hi", theirLanguage: "en", voice: "ritu" };
       const parsed = parseClientMessage(msg);
       expect(parsed.type).toBe("update_config");
     });
@@ -62,8 +68,13 @@ describe("WebSocket protocol", () => {
     });
 
     it("rejects a start_session with invalid language code", () => {
-      const msg = { type: "start_session", language: "xx" };
+      const msg = { type: "start_session", myLanguage: "xx", theirLanguage: "mr" };
       expect(() => parseClientMessage(msg)).toThrow();
+    });
+
+    it("rejects a start_session missing the language pair", () => {
+      expect(() => parseClientMessage({ type: "start_session", myLanguage: "pa" })).toThrow();
+      expect(() => parseClientMessage({ type: "start_session" })).toThrow();
     });
 
     it("rejects a sessionId that is not a UUID", () => {

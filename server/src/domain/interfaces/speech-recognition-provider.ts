@@ -1,4 +1,4 @@
-import type { LanguageCode, LanguageLocale } from "@dhvani/shared";
+import type { LanguageCode, LanguageLocale } from "@airco-talks/shared";
 
 export type Unsubscribe = () => void;
 

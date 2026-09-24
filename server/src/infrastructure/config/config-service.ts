@@ -1,12 +1,11 @@
-import { AppError, type LanguageCode } from "@dhvani/shared";
+import { AppError } from "@airco-talks/shared";
 
 export interface ServerConfig {
   port: number;
-  webOrigin: string;
+  webOrigins: string[];
   logLevel: "debug" | "info" | "warn" | "error";
   sarvam: { apiKey: string; baseUrl: string };
   cerebras: { apiKey: string; baseUrl: string; model: string };
-  defaultAutoLanguage: LanguageCode;
   confidenceThreshold: number;
   maxContextMessages: number;
   sampleRate: number;
@@ -27,7 +26,7 @@ export class ConfigService {
 
     this.config = {
       port: intEnv(env, "PORT", 8080),
-      webOrigin: env.WEB_ORIGIN ?? "http://localhost:3000",
+          webOrigins: parseOrigins(env.WEB_ORIGIN ?? "http://localhost:3000"),
       logLevel: (env.LOG_LEVEL as ServerConfig["logLevel"]) ?? "info",
       sarvam: { apiKey: sarvamApiKey, baseUrl: "https://api.sarvam.ai" },
       cerebras: {
@@ -35,7 +34,6 @@ export class ConfigService {
         baseUrl: "https://api.cerebras.ai/v1",
         model: env.CEREBRAS_MODEL ?? "gpt-oss-120b",
       },
-      defaultAutoLanguage: normalizeLanguage(env.DEFAULT_AUTO_LANGUAGE ?? "hi-IN"),
       confidenceThreshold: floatEnv(env, "LANGUAGE_CONFIDENCE_THRESHOLD", 0.6),
       maxContextMessages: intEnv(env, "MAX_CONTEXT_MESSAGES", 12),
       sampleRate: intEnv(env, "STT_SAMPLE_RATE", 16000),
@@ -70,8 +68,9 @@ function floatEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): number
   return Number.isFinite(n) ? n : fallback;
 }
 
-function normalizeLanguage(input: string): LanguageCode {
-  const base = input.toLowerCase().split(/[-_]/)[0] ?? "hi";
-  const allowed: LanguageCode[] = ["mr", "hi", "en", "gu", "ta", "te", "kn", "ml", "bn", "pa"];
-  return (allowed as string[]).includes(base) ? (base as LanguageCode) : "hi";
+function parseOrigins(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }

@@ -1,4 +1,4 @@
-import type { LanguageCode } from "@dhvani/shared";
+import type { LanguageCode } from "@airco-talks/shared";
 import type { ProviderErrorEvent } from "./speech-recognition-provider.js";
 
 export interface ChatMessage {

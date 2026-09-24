@@ -1,0 +1,14 @@
+node_modules
+web/node_modules
+web/.next
+dist
+*.tsbuildinfo
+.git
+.env
+.env.local
+.env.*.local
+tests
+*.md
+image.png
+logo.png
+.vercel

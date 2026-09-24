@@ -1,4 +1,4 @@
-import { AppError } from "@dhvani/shared";
+import { AppError } from "@airco-talks/shared";
 
 /** Microphone/browser-side permission issues (surfaced to client). */
 export class MicrophonePermissionError extends AppError {

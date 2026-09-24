@@ -3,8 +3,8 @@
  */
 import { VoiceSessionState } from "./state/index.js";
 
-export const APP_NAME = "Airco DHVANI AI";
-export const APP_TAGLINE = "AI that speaks your language";
+export const APP_NAME = "Airco Talks";
+export const APP_TAGLINE = "Two-way voice translator for Indian languages";
 
 /** WebSocket reconnect backoff (milliseconds). */
 export const RECONNECT_DELAY_MS = 1000;
@@ -33,8 +33,8 @@ export const STATE_LABELS: ReadonlyMap<VoiceSessionState, string> = new Map([
   [VoiceSessionState.CONNECTING, "Connecting…"],
   [VoiceSessionState.LISTENING, "Listening…"],
   [VoiceSessionState.USER_SPEAKING, "Listening…"],
-  [VoiceSessionState.PROCESSING, "Thinking…"],
-  [VoiceSessionState.AI_SPEAKING, "Speaking…"],
+  [VoiceSessionState.PROCESSING, "Translating…"],
+  [VoiceSessionState.AI_SPEAKING, "Speaking translation…"],
   [VoiceSessionState.USER_INTERRUPT, "Listening…"],
   [VoiceSessionState.ERROR, "Something went wrong"],
   [VoiceSessionState.ENDED, "Conversation ended"],

@@ -1,5 +1,5 @@
-import { VoiceSessionState, isValidTransition } from "@dhvani/shared";
-import { AppError } from "@dhvani/shared";
+import { VoiceSessionState, isValidTransition } from "@airco-talks/shared";
+import { AppError } from "@airco-talks/shared";
 
 /**
  * Lightweight state machine for the voice session. Guards against illegal

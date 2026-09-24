@@ -11,11 +11,21 @@ import { LanguageCodeSchema, LanguageSettingSchema } from "../languages/index.js
 
 // ── Client → Server ──────────────────────────────────────────
 
+/**
+ * Start a translation session.
+ *
+ * myLanguage is the device holder's language (always a fixed code).
+ * theirLanguage is the other person's language — either a fixed code or
+ * "auto", in which case the system detects the customer's language per
+ * utterance and remembers it for translating the holder's replies.
+ */
 export const StartSessionMessage = z.object({
   type: z.literal("start_session"),
   sessionId: z.string().uuid().optional(),
-  /** User-selected speaking language setting ("auto" or a code). */
-  language: LanguageSettingSchema,
+  /** Language of the device holder (translated INTO theirLanguage). */
+  myLanguage: LanguageCodeSchema,
+  /** Language of the other person, or "auto" to detect it per utterance. */
+  theirLanguage: LanguageSettingSchema,
   /** Preferred TTS voice override (empty = provider default for language). */
   voice: z.string().optional(),
 });
@@ -43,11 +53,12 @@ export const InterruptMessage = z.object({
 });
 export type InterruptMessage = z.infer<typeof InterruptMessage>;
 
-/** Change language or voice mid-session. */
+/** Change the language pair or voice mid-session. */
 export const UpdateConfigMessage = z.object({
   type: z.literal("update_config"),
   sessionId: z.string().uuid(),
-  language: LanguageSettingSchema.optional(),
+  myLanguage: LanguageCodeSchema.optional(),
+  theirLanguage: LanguageSettingSchema.optional(),
   voice: z.string().optional(),
 });
 export type UpdateConfigMessage = z.infer<typeof UpdateConfigMessage>;
