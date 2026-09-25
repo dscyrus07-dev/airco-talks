@@ -218,12 +218,12 @@ export class AircoTalksWebSocketServer {
 
     on("voice_session_started", (p) => route(p.sessionId, { type: "session_started", sessionId: p.sessionId }));
     on("state_changed", (p) => route(p.sessionId, { type: "state_changed", sessionId: p.sessionId, state: p.to }));
-    on("transcript_partial", (p) => route(p.sessionId, { type: "transcript_partial", sessionId: p.sessionId, text: p.text, language: p.language }));
-    on("transcript_final", (p) => route(p.sessionId, { type: "transcript_final", sessionId: p.sessionId, text: p.text, language: p.language, confidence: p.confidence }));
+    on("transcript_partial", (p) => route(p.sessionId, { type: "transcript_partial", sessionId: p.sessionId, text: p.text, language: p.language, side: p.side }));
+    on("transcript_final", (p) => route(p.sessionId, { type: "transcript_final", sessionId: p.sessionId, text: p.text, language: p.language, confidence: p.confidence, side: p.side }));
     on("language_detected", (p) => route(p.sessionId, { type: "language_detected", sessionId: p.sessionId, language: p.language, confidence: p.confidence }));
-    on("ai_response_started", (p) => route(p.sessionId, { type: "ai_response_started", sessionId: p.sessionId }));
+    on("ai_response_started", (p) => route(p.sessionId, { type: "ai_response_started", sessionId: p.sessionId, side: p.side }));
     on("ai_response_chunk", (p) => route(p.sessionId, { type: "ai_response_chunk", sessionId: p.sessionId, text: p.text }));
-    on("ai_response_completed", (p) => route(p.sessionId, { type: "ai_response_completed", sessionId: p.sessionId, text: p.text, language: p.language }));
+    on("ai_response_completed", (p) => route(p.sessionId, { type: "ai_response_completed", sessionId: p.sessionId, text: p.text, language: p.language, side: p.side }));
     on("tts_chunk", (p) => route(p.sessionId, { type: "audio_chunk", sessionId: p.sessionId, data: p.data, sampleRate: p.sampleRate }));
     on("ai_speech_ended", (p) => route(p.sessionId, { type: "ai_speech_ended", sessionId: p.sessionId }));
     on("latency", (p) => route(p.sessionId, { type: "latency", sessionId: p.sessionId, speechEndToFirstAudioMs: p.speechEndToFirstAudioMs, llmFirstTokenMs: p.llmFirstTokenMs, ttsFirstAudioMs: p.ttsFirstAudioMs }));

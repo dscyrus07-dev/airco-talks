@@ -59,15 +59,21 @@ describe("LanguageService", () => {
 
   describe("resolveTranslationTarget", () => {
     it("translates the device holder's language into the other person's (fixed pair)", () => {
-      expect(service.resolveTranslationTarget("pa", "pa", "mr", undefined, 0.95, 0.6).target).toBe("mr");
+      const result = service.resolveTranslationTarget("pa", "pa", "mr", undefined, 0.95, 0.6);
+      expect(result.target).toBe("mr");
+      expect(result.speakerSide).toBe("my");
     });
 
     it("translates the other person's speech back for the device holder (fixed pair)", () => {
-      expect(service.resolveTranslationTarget("mr", "pa", "mr", undefined, 0.95, 0.6).target).toBe("pa");
+      const result = service.resolveTranslationTarget("mr", "pa", "mr", undefined, 0.95, 0.6);
+      expect(result.target).toBe("pa");
+      expect(result.speakerSide).toBe("their");
     });
 
     it("assumes the device holder spoke when detection is outside a fixed pair", () => {
-      expect(service.resolveTranslationTarget("hi", "pa", "mr", undefined, 0.95, 0.6).target).toBe("mr");
+      const result = service.resolveTranslationTarget("hi", "pa", "mr", undefined, 0.95, 0.6);
+      expect(result.target).toBe("mr");
+      expect(result.speakerSide).toBe("my");
     });
 
     it("handles an inverted fixed pair", () => {
@@ -78,23 +84,27 @@ describe("LanguageService", () => {
     it("auto mode: customer speech is translated into the holder's language", () => {
       const result = service.resolveTranslationTarget("mr", "hi", AUTO_LANGUAGE, undefined, 0.95, 0.6);
       expect(result.target).toBe("hi");
+      expect(result.speakerSide).toBe("their");
       expect(result.newCustomerLanguage).toBe("mr");
     });
 
     it("auto mode: the holder's reply is translated into the customer's last heard language", () => {
       const result = service.resolveTranslationTarget("hi", "hi", AUTO_LANGUAGE, "mr", 0.95, 0.6);
       expect(result.target).toBe("mr");
+      expect(result.speakerSide).toBe("my");
       expect(result.newCustomerLanguage).toBeUndefined();
     });
 
     it("auto mode: falls back to English when the holder speaks before the customer is heard", () => {
       const result = service.resolveTranslationTarget("hi", "hi", AUTO_LANGUAGE, undefined, 0.95, 0.6);
       expect(result.target).toBe("en");
+      expect(result.speakerSide).toBe("my");
     });
 
     it("auto mode: does not remember the customer language on low confidence", () => {
       const result = service.resolveTranslationTarget("ta", "hi", AUTO_LANGUAGE, "mr", 0.4, 0.6);
       expect(result.target).toBe("hi");
+      expect(result.speakerSide).toBe("their");
       expect(result.newCustomerLanguage).toBeUndefined();
     });
 
@@ -102,10 +112,28 @@ describe("LanguageService", () => {
       // Customer speaks Tamil → holder hears Hindi, customer language remembered.
       const first = service.resolveTranslationTarget("ta", "hi", AUTO_LANGUAGE, undefined, 0.95, 0.6);
       expect(first.target).toBe("hi");
+      expect(first.speakerSide).toBe("their");
       expect(first.newCustomerLanguage).toBe("ta");
       // Holder replies in Hindi → customer hears Tamil.
       const second = service.resolveTranslationTarget("hi", "hi", AUTO_LANGUAGE, "ta", 0.95, 0.6);
       expect(second.target).toBe("ta");
+      expect(second.speakerSide).toBe("my");
+    });
+  });
+
+  describe("resolveSpeakerSide", () => {
+    it("routes fixed-pair detections to the matching side", () => {
+      expect(service.resolveSpeakerSide("pa", "pa", "mr")).toBe("my");
+      expect(service.resolveSpeakerSide("mr", "pa", "mr")).toBe("their");
+    });
+
+    it("assumes the holder spoke when detection is outside a fixed pair", () => {
+      expect(service.resolveSpeakerSide("hi", "pa", "mr")).toBe("my");
+    });
+
+    it("auto mode: holder's language is the holder, anything else is the customer", () => {
+      expect(service.resolveSpeakerSide("hi", "hi", AUTO_LANGUAGE)).toBe("my");
+      expect(service.resolveSpeakerSide("ta", "hi", AUTO_LANGUAGE)).toBe("their");
     });
   });
 

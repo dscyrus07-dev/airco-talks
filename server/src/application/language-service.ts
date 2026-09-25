@@ -1,4 +1,5 @@
 import {
+  type ConversationSide,
   type LanguageCode,
   type LanguageLocale,
   type LanguageSetting,
@@ -76,20 +77,39 @@ export class LanguageService {
     lastCustomerLanguage: LanguageCode | undefined,
     confidence: number,
     threshold: number,
-  ): { target: LanguageCode; newCustomerLanguage?: LanguageCode } {
+  ): { target: LanguageCode; speakerSide: ConversationSide; newCustomerLanguage?: LanguageCode } {
     if (theirSetting !== AUTO_LANGUAGE) {
-      return { target: detected === theirSetting ? myLanguage : theirSetting };
+      return {
+        target: detected === theirSetting ? myLanguage : theirSetting,
+        speakerSide: detected === theirSetting ? "their" : "my",
+      };
     }
     if (detected === myLanguage) {
       // The holder replied — speak to the customer in their last heard language.
-      return { target: lastCustomerLanguage ?? AUTO_CUSTOMER_FALLBACK };
+      return { target: lastCustomerLanguage ?? AUTO_CUSTOMER_FALLBACK, speakerSide: "my" };
     }
     // Someone other than the holder spoke; translate for the holder and
     // remember the customer's language (confidence-gated to avoid flapping).
     return {
       target: myLanguage,
+      speakerSide: "their",
       newCustomerLanguage: confidence >= threshold ? detected : undefined,
     };
+  }
+
+  /**
+   * Speaker side for live partial transcripts (no customer-language update).
+   * Same policy as {@link resolveTranslationTarget}, minus bookkeeping.
+   */
+  resolveSpeakerSide(
+    detected: LanguageCode,
+    myLanguage: LanguageCode,
+    theirSetting: LanguageSetting,
+  ): ConversationSide {
+    if (theirSetting !== AUTO_LANGUAGE) {
+      return detected === theirSetting ? "their" : "my";
+    }
+    return detected === myLanguage ? "my" : "their";
   }
 
   /**

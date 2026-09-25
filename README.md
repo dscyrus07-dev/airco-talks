@@ -100,6 +100,7 @@ npm run build       # all packages
 ## Key Features
 
 - **Two-way voice translation**: Each side hears the other in their own language — no menus, no typing.
+- **Two-panel conversation view**: Separate windows for you and the customer, each with its own mic — you always see who is talking and which conversation is whose.
 - **Auto-detect customer mode**: Select only YOUR language; the customer's language is detected automatically and remembered for your replies.
 - **Automatic language detection per turn**: Whoever speaks, Sarvam detects the language and the translation flips direction automatically.
 - **Barge-in**: Speak while the translation is playing — it stops, listens, and translates the interruption.

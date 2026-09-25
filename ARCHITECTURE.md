@@ -120,9 +120,13 @@ All client→server messages are validated with Zod discriminated unions before 
 - `stop_session` — `{ type, sessionId }`
 
 **Server → Client:**
-- `session_started`, `state_changed`, `transcript_partial`, `transcript_final`
-- `language_detected`, `ai_response_started`, `ai_response_chunk`, `ai_response_completed`
+- `session_started`, `state_changed`
+- `transcript_partial` / `transcript_final` — `{ text, language, confidence?, side }` where `side` ("my" | "their") is the speaker's panel
+- `language_detected`
+- `ai_response_started` / `ai_response_chunk` / `ai_response_completed` — the response events carry `side` = the panel that HEARS the translation
 - `audio_chunk` (base64 PCM + sampleRate), `ai_speech_ended`, `latency`, `error`
+
+The `side` field drives the two-panel UI: spoken texts appear in the speaker's window, translations in the listener's window.
 
 ## Audio Format
 

@@ -84,12 +84,17 @@
 | 8.1 | Open Settings, change Voice to "anushka" | Next translation uses the selected voice |
 | 8.2 | Change Voice back to "Default for language" | Next translation uses the per-language default voice |
 
-### 9. Translation History
+### 9. Two-Panel Conversation View
 
 | # | Action | Expected Result |
 |---|--------|-----------------|
-| 9.1 | Complete 3+ turns | History shows each spoken line and its translation, each labeled with its language endonym |
-| 9.2 | Click "Clear" | History clears |
+| 9.1 | Start a session | Two panels appear: "You" (left) and "Customer" (right), each with its own mic button and language label |
+| 9.2 | Speak in your language | Your panel highlights, live caption "Spoken: …" appears in YOUR panel |
+| 9.3 | Wait for translation | "Translation: …" appears in the CUSTOMER panel and the audio plays |
+| 9.4 | Customer speaks | Their panel highlights; their words appear in THEIR panel; translation appears in YOUR panel |
+| 9.5 | Complete 3+ turns | Each panel keeps its own chat-style log: spoken bubbles (right) and translation bubbles (left), labeled with language endonyms |
+| 9.6 | Tap either mic while active | Session stops (both mics control the same device microphone) |
+| 9.7 | Click "Clear conversation" | Both panels clear |
 
 ### 10. Error Handling
 

@@ -90,7 +90,17 @@ describe("WebSocket protocol", () => {
 
   describe("isServerMessage", () => {
     it("returns true for a valid transcript_partial", () => {
-      const msg = { type: "transcript_partial", sessionId: UUID, text: "hello", language: "hi" };
+      const msg = { type: "transcript_partial", sessionId: UUID, text: "hello", language: "hi", side: "my" };
+      expect(isServerMessage(msg)).toBe(true);
+    });
+
+    it("returns true for a valid transcript_final with side", () => {
+      const msg = { type: "transcript_final", sessionId: UUID, text: "hello", language: "hi", confidence: 0.9, side: "their" };
+      expect(isServerMessage(msg)).toBe(true);
+    });
+
+    it("returns true for a valid ai_response_started with side", () => {
+      const msg = { type: "ai_response_started", sessionId: UUID, side: "my" };
       expect(isServerMessage(msg)).toBe(true);
     });
 
@@ -127,6 +137,11 @@ describe("WebSocket protocol", () => {
 
     it("returns false for a message missing required fields", () => {
       expect(isServerMessage({ type: "transcript_partial", sessionId: UUID })).toBe(false);
+    });
+
+    it("returns false for a transcript_partial with an invalid side", () => {
+      const msg = { type: "transcript_partial", sessionId: UUID, text: "hi", language: "hi", side: "other" };
+      expect(isServerMessage(msg)).toBe(false);
     });
   });
 });

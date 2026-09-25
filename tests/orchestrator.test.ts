@@ -214,6 +214,32 @@ describe("VoiceConversationOrchestrator", () => {
     expect(detected[0]?.language).toBe("pa");
   });
 
+  it("tags transcript events with the speaker side", async () => {
+    const finals: { language: string; side: string }[] = [];
+    eventBus.on("transcript_final", (p) => finals.push({ language: p.language, side: p.side }));
+
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", 0.95);
+    await flushMicrotasks();
+    speech.emitFinal("कसे आहात?", "mr", 0.95);
+    await flushMicrotasks();
+
+    expect(finals[0]).toEqual({ language: "pa", side: "my" });
+    expect(finals[1]).toEqual({ language: "mr", side: "their" });
+  });
+
+  it("tags ai_response events with the hearer side", async () => {
+    const started: string[] = [];
+    eventBus.on("ai_response_started", (p) => started.push(p.side));
+
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", 0.95);
+    await flushMicrotasks();
+
+    // The holder spoke Punjabi → the customer hears the translation.
+    expect(started[0]).toBe("their");
+  });
+
   it("interrupt cancels ongoing TTS playback", async () => {
     await orchestrator.startSession("s1", "pa", "mr", "");
     speech.emitFinal("ਹੈਲੋ", "pa", 0.95);

@@ -74,6 +74,16 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ── Server → Client ──────────────────────────────────────────
 
+/**
+ * Which side of the conversation a text belongs to:
+ *  - "my"    → the device holder spoke it / hears it
+ *  - "their" → the customer spoke it / hears it
+ * Spoken texts are tagged with the speaker's side; translations with the
+ * hearer's side. The UI uses this to route texts into the right panel.
+ */
+export const ConversationSideSchema = z.enum(["my", "their"]);
+export type ConversationSide = z.infer<typeof ConversationSideSchema>;
+
 export const SessionStartedMessage = z.object({
   type: z.literal("session_started"),
   sessionId: z.string().uuid(),
@@ -85,6 +95,8 @@ export const TranscriptPartialMessage = z.object({
   sessionId: z.string().uuid(),
   text: z.string(),
   language: LanguageCodeSchema,
+  /** Side of the person currently speaking. */
+  side: ConversationSideSchema,
 });
 export type TranscriptPartialMessage = z.infer<typeof TranscriptPartialMessage>;
 
@@ -94,6 +106,8 @@ export const TranscriptFinalMessage = z.object({
   text: z.string(),
   language: LanguageCodeSchema,
   confidence: z.number().min(0).max(1),
+  /** Side of the person who spoke this utterance. */
+  side: ConversationSideSchema,
 });
 export type TranscriptFinalMessage = z.infer<typeof TranscriptFinalMessage>;
 
@@ -108,6 +122,8 @@ export type LanguageDetectedMessage = z.infer<typeof LanguageDetectedMessage>;
 export const AiResponseStartedMessage = z.object({
   type: z.literal("ai_response_started"),
   sessionId: z.string().uuid(),
+  /** Side that will HEAR this translation (opposite of the speaker). */
+  side: ConversationSideSchema,
 });
 export type AiResponseStartedMessage = z.infer<typeof AiResponseStartedMessage>;
 
@@ -123,6 +139,8 @@ export const AiResponseCompletedMessage = z.object({
   sessionId: z.string().uuid(),
   text: z.string(),
   language: LanguageCodeSchema,
+  /** Side that heard this translation. */
+  side: ConversationSideSchema,
 });
 export type AiResponseCompletedMessage = z.infer<typeof AiResponseCompletedMessage>;
 

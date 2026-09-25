@@ -1,4 +1,4 @@
-import type { LanguageCode, LanguageSetting } from "@airco-talks/shared";
+import type { ConversationSide, LanguageCode, LanguageSetting } from "@airco-talks/shared";
 import { VoiceSessionState } from "@airco-talks/shared";
 
 import { EventBus } from "../domain/event-bus.js";
@@ -211,6 +211,7 @@ export class VoiceConversationOrchestrator {
       sessionId: runtime.sessionId,
       text: e.text,
       language: e.language,
+      side: this.deps.languageService.resolveSpeakerSide(e.language, runtime.myLanguage, runtime.theirLanguage),
     });
   }
 
@@ -254,31 +255,34 @@ export class VoiceConversationOrchestrator {
       this.transition(runtime, VoiceSessionState.LISTENING);
     }
 
-    this.deps.eventBus.emit("transcript_final", {
-      sessionId: runtime.sessionId,
-      text,
-      language: e.language,
-      confidence: e.confidence,
-    });
-
     const conv = this.deps.conversationManager.get(runtime.sessionId);
     if (!conv) return;
 
     conv.recordDetection(e.language, e.confidence);
     // The detected language tells us WHO spoke; the translation target follows
     // the direction policy (fixed pair or customer "auto" mode).
-    const { target: targetLanguage, newCustomerLanguage } = this.deps.languageService.resolveTranslationTarget(
-      e.language,
-      runtime.myLanguage,
-      runtime.theirLanguage,
-      runtime.lastCustomerLanguage,
-      e.confidence,
-      this.deps.config.confidenceThreshold,
-    );
+    const { target: targetLanguage, speakerSide, newCustomerLanguage } =
+      this.deps.languageService.resolveTranslationTarget(
+        e.language,
+        runtime.myLanguage,
+        runtime.theirLanguage,
+        runtime.lastCustomerLanguage,
+        e.confidence,
+        this.deps.config.confidenceThreshold,
+      );
     if (newCustomerLanguage) {
       runtime.lastCustomerLanguage = newCustomerLanguage;
       conv.setLastCustomerLanguage(newCustomerLanguage);
     }
+
+    this.deps.eventBus.emit("transcript_final", {
+      sessionId: runtime.sessionId,
+      text,
+      language: e.language,
+      confidence: e.confidence,
+      side: speakerSide,
+    });
+
     this.deps.eventBus.emit("language_detected", {
       sessionId: runtime.sessionId,
       language: e.language,
@@ -292,7 +296,7 @@ export class VoiceConversationOrchestrator {
       language: e.language,
     });
 
-    void this.runTranslation(runtime, text, e.language, targetLanguage);
+    void this.runTranslation(runtime, text, e.language, targetLanguage, speakerSide);
   }
 
   // ── LLM + TTS streaming pipeline ──────────────────────────
@@ -302,6 +306,7 @@ export class VoiceConversationOrchestrator {
     utterance: string,
     sourceLanguage: LanguageCode,
     targetLanguage: LanguageCode,
+    speakerSide: ConversationSide,
   ): Promise<void> {
     const conv = this.deps.conversationManager.get(runtime.sessionId);
     if (!conv || !runtime.active) return;
@@ -317,7 +322,9 @@ export class VoiceConversationOrchestrator {
     if (runtime.stateMachine.state !== VoiceSessionState.PROCESSING) {
       this.transition(runtime, VoiceSessionState.PROCESSING);
     }
-    this.deps.eventBus.emit("ai_response_started", { sessionId: runtime.sessionId });
+    // The translation is heard by the side opposite to the speaker.
+    const hearerSide: ConversationSide = speakerSide === "my" ? "their" : "my";
+    this.deps.eventBus.emit("ai_response_started", { sessionId: runtime.sessionId, side: hearerSide });
 
     const { messages } = buildTranslationPrompt(utterance, sourceLanguage, targetLanguage);
 
@@ -350,7 +357,7 @@ export class VoiceConversationOrchestrator {
             sentenceBuffer = remainder;
             if (complete.trim()) {
               runtime.ttsQueue.push(complete.trim());
-              void this.drainTtsQueue(runtime, targetLanguage);
+              void this.drainTtsQueue(runtime, targetLanguage, hearerSide);
             }
           },
           onComplete: () => {
@@ -358,7 +365,7 @@ export class VoiceConversationOrchestrator {
             if (sentenceBuffer.trim()) {
               runtime.ttsQueue.push(sentenceBuffer.trim());
               sentenceBuffer = "";
-              void this.drainTtsQueue(runtime, targetLanguage);
+              void this.drainTtsQueue(runtime, targetLanguage, hearerSide);
             }
           },
           onError: (e) => this.onProviderError(runtime, e, "llm"),
@@ -376,6 +383,7 @@ export class VoiceConversationOrchestrator {
         sessionId: runtime.sessionId,
         text: "",
         language: targetLanguage,
+        side: hearerSide,
       });
       this.deps.eventBus.emit("ai_speech_ended", { sessionId: runtime.sessionId });
       this.transition(runtime, VoiceSessionState.LISTENING);
@@ -383,13 +391,13 @@ export class VoiceConversationOrchestrator {
   }
 
   /** Process queued TTS sentences sequentially to preserve audio order. */
-  private async drainTtsQueue(runtime: SessionRuntime, language: LanguageCode): Promise<void> {
+  private async drainTtsQueue(runtime: SessionRuntime, language: LanguageCode, hearerSide: ConversationSide): Promise<void> {
     if (runtime.ttsBusy || !runtime.active) return;
     const next = runtime.ttsQueue.shift();
     if (!next) {
       // Nothing left to synthesize; if LLM is also done, finish the turn.
       if (runtime.llmDone && !runtime.ttsBusy && runtime.ttsQueue.length === 0) {
-        this.finishTurn(runtime, language);
+        this.finishTurn(runtime, language, hearerSide);
       }
       return;
     }
@@ -433,11 +441,11 @@ export class VoiceConversationOrchestrator {
     }
     runtime.ttsBusy = false;
     if (runtime.active && !runtime.generationAbort?.signal.aborted) {
-      void this.drainTtsQueue(runtime, language);
+      void this.drainTtsQueue(runtime, language, hearerSide);
     }
   }
 
-  private finishTurn(runtime: SessionRuntime, language: LanguageCode): void {
+  private finishTurn(runtime: SessionRuntime, language: LanguageCode, hearerSide: ConversationSide): void {
     if (!runtime.active) return;
     const conv = this.deps.conversationManager.get(runtime.sessionId);
     const finalText = runtime.assistantText.trim();
@@ -455,6 +463,7 @@ export class VoiceConversationOrchestrator {
       sessionId: runtime.sessionId,
       text: finalText,
       language,
+      side: hearerSide,
     });
     this.deps.eventBus.emit("tts_completed", { sessionId: runtime.sessionId });
     this.deps.eventBus.emit("ai_speech_ended", { sessionId: runtime.sessionId });

@@ -1,12 +1,14 @@
 "use client";
 import { useCallback, useState } from "react";
-import type { LanguageCode } from "@airco-talks/shared";
+import type { ConversationSide, LanguageCode } from "@airco-talks/shared";
 
 export interface UIMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   language: LanguageCode;
+  /** Conversation side this text belongs to (who spoke it / who hears it). */
+  side: ConversationSide;
 }
 
 /**
@@ -18,16 +20,22 @@ export function useConversation() {
   const [partialTranscript, setPartialTranscript] = useState("");
   const [aiResponseText, setAiResponseText] = useState("");
 
-  const addUserMessage = useCallback((content: string, language: LanguageCode) => {
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content, language }]);
-  }, []);
+  const addUserMessage = useCallback(
+    (content: string, language: LanguageCode, side: ConversationSide) => {
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content, language, side }]);
+    },
+    [],
+  );
 
-  const finalizeAssistant = useCallback((content: string, language: LanguageCode) => {
-    setAiResponseText("");
-    if (content.trim()) {
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content, language }]);
-    }
-  }, []);
+  const finalizeAssistant = useCallback(
+    (content: string, language: LanguageCode, side: ConversationSide) => {
+      setAiResponseText("");
+      if (content.trim()) {
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content, language, side }]);
+      }
+    },
+    [],
+  );
 
   const appendAiChunk = useCallback((chunk: string) => {
     setAiResponseText((prev) => prev + chunk);

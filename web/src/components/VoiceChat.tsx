@@ -1,14 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
-import { VoiceSessionState, getLanguage, type LanguageCode } from "@airco-talks/shared";
+import { useState } from "react";
+import { VoiceSessionState, getLanguage, type ConversationSide, type LanguageCode } from "@airco-talks/shared";
 import { useVoiceSession } from "@/hooks/useVoiceSession";
 import { Sidebar } from "./Sidebar";
 import { AppHeader } from "./AppHeader";
-import { MicrophoneButton } from "./MicrophoneButton";
-import { VoiceWave } from "./VoiceWave";
+import { ConversationPanels } from "./ConversationPanels";
 import { StateIndicator } from "./StateIndicator";
-import { LiveTranscript } from "./LiveTranscript";
-import { ConversationHistory } from "./ConversationHistory";
 import { SettingsPanel } from "./SettingsPanel";
 import { ErrorMessage } from "./ErrorMessage";
 import { VoiceEngineCard } from "./VoiceEngineCard";
@@ -23,38 +20,19 @@ const VOICES = [
 ];
 
 /**
- * App shell: sidebar + header + hero (mic orb, wave, transcript) + voice
- * engine card + language presets + feature bar. All voice logic lives in
- * {@link useVoiceSession}; this component only composes the presentation.
- *
- * Two presentation modes:
- *  - Welcome mode (no messages): full hero + language presets + features.
- *  - Conversation mode (any messages/live transcript): everything marketing
- *    hides; the live translation becomes the focus with a compact orb.
+ * App shell: sidebar + header + two-panel conversation (You / Customer, each
+ * with its own mic) + language presets + feature bar. All voice logic lives
+ * in {@link useVoiceSession}; this component only composes the presentation.
  */
 export function VoiceChat() {
   const session = useVoiceSession();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const [level, setLevel] = useState(0);
 
   const conversationMode =
     session.messages.length > 0 ||
     session.partialTranscript.length > 0 ||
     session.aiResponseText.length > 0;
-
-  // Poll the REAL microphone level for the waveform while listening.
-  useEffect(() => {
-    if (
-      session.voiceState !== VoiceSessionState.LISTENING &&
-      session.voiceState !== VoiceSessionState.USER_SPEAKING
-    ) {
-      setLevel(0);
-      return;
-    }
-    const id = setInterval(() => setLevel(session.micActive ? session.getMicLevel() : 0), 100);
-    return () => clearInterval(id);
-  }, [session.voiceState, session.micActive, session]);
 
   const myLang = getLanguage(session.settings.myLanguage);
   const theirSetting = session.settings.theirLanguage;
@@ -64,7 +42,17 @@ export function VoiceChat() {
     ? getLanguage(session.detectedLanguage as LanguageCode)
     : null;
 
+  // Highlight the panel of whoever is talking, or the panel hearing the
+  // translation while it plays.
+  const activeSide: ConversationSide | null =
+    session.voiceState === VoiceSessionState.AI_SPEAKING
+      ? session.aiSide
+      : session.voiceState === VoiceSessionState.USER_SPEAKING || session.partialTranscript
+        ? session.partialSide
+        : null;
+
   const connected = session.connectionStatus === "connected";
+  const theirLabel = theirLang ? theirLang.endonym : "Auto-detect";
 
   return (
     <div className="flex min-h-screen">
@@ -93,45 +81,9 @@ export function VoiceChat() {
           onOpenNav={() => setNavOpen(true)}
         />
 
-        {conversationMode ? (
-          /* ── Conversation mode: live translation is the focus ───── */
-          <main className="relative flex flex-1 flex-col px-4 pb-4 lg:px-8">
-            <section className="flex flex-col items-center gap-3 pt-1">
-              <MicrophoneButton compact state={session.voiceState} onClick={session.toggle} />
-              <button
-                type="button"
-                onClick={session.toggle}
-                className="glass flex items-center gap-2 rounded-full px-4 py-2 text-xs text-body transition duration-200 hover:border-accent/40 hover:text-strong focus-visible:ring-2 focus-visible:ring-accentSoft/60"
-                aria-label={session.voiceState === VoiceSessionState.IDLE ? "Tap to speak" : "Stop listening"}
-              >
-                <MicGlyph />
-                {session.voiceState === VoiceSessionState.IDLE ? "Tap to speak" : "Tap to stop"}
-              </button>
-              <StateIndicator
-                state={session.voiceState}
-                detectedLanguage={detected?.name}
-                languageEndonym={detected?.endonym}
-              />
-              <LiveTranscript partial={session.partialTranscript} aiText={session.aiResponseText} />
-              <ErrorMessage
-                error={session.error}
-                micError={session.micError}
-                onDismiss={() => session.updateSettings({})}
-              />
-            </section>
-
-            <ConversationHistory expanded messages={session.messages} onClear={session.clearConversation} />
-
-            {session.latency.speechEndToFirstAudioMs ? (
-              <p className="py-2 text-center text-[10px] text-faint">
-                voice latency: {session.latency.speechEndToFirstAudioMs}ms
-              </p>
-            ) : null}
-          </main>
-        ) : (
-          /* ── Welcome mode: full hero ────────────────────────────── */
-          <main className="relative flex flex-1 flex-col px-4 pb-6 lg:px-8">
-            <section className="relative flex flex-col items-center pt-6 lg:pt-10">
+        <main className="relative flex flex-1 flex-col px-4 pb-6 lg:px-8">
+          {!conversationMode ? (
+            <section className="relative flex flex-col items-center pt-4 lg:pt-8">
               <h2 className="text-center text-3xl font-bold tracking-tight text-strong sm:text-4xl lg:text-[2.6rem]">
                 Speak <span className="text-gradient-hero">your</span> language. They hear theirs.
               </h2>
@@ -140,67 +92,69 @@ export function VoiceChat() {
                   ? `Two-way voice translation — you speak ${myLang.name}, they hear ${theirLang.name}`
                   : `Two-way voice translation — you speak ${myLang.name}; the customer's language is auto-detected`}
               </p>
-
-              {/* Wave + orb composition */}
-              <div className="relative mt-6 flex w-full max-w-3xl items-center justify-center">
-                <VoiceWave active={session.voiceState !== VoiceSessionState.IDLE} level={level} />
-                <MicrophoneButton state={session.voiceState} onClick={session.toggle} />
-              </div>
-
-              <button
-                type="button"
-                onClick={session.toggle}
-                className="glass mt-6 flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-body transition duration-200 hover:border-accent/40 hover:text-strong focus-visible:ring-2 focus-visible:ring-accentSoft/60"
-                aria-label={session.voiceState === VoiceSessionState.IDLE ? "Tap to speak" : "Stop listening"}
-              >
-                <MicGlyph />
-                {session.voiceState === VoiceSessionState.IDLE ? "Tap to speak" : "Tap to stop"}
-              </button>
-
-              <StateIndicator
-                state={session.voiceState}
-                detectedLanguage={detected?.name}
-                languageEndonym={detected?.endonym}
-              />
-
-              <LiveTranscript partial={session.partialTranscript} aiText={session.aiResponseText} />
-
-              <ErrorMessage
-                error={session.error}
-                micError={session.micError}
-                onDismiss={() => session.updateSettings({})}
-              />
             </section>
+          ) : null}
 
-            {/* Voice engine card (floats right on xl) */}
-            <div className="mt-8 flex justify-center xl:absolute xl:right-8 xl:top-28 xl:mt-0 xl:justify-end">
-              <VoiceEngineCard />
-            </div>
+          <div className={conversationMode ? "mt-2" : "mt-6"}>
+            <ConversationPanels
+              voiceState={session.voiceState}
+              onMicClick={session.toggle}
+              messages={session.messages}
+              myLanguageEndonym={myLang.endonym}
+              theirLanguageLabel={theirLabel}
+              partial={session.partialTranscript}
+              partialSide={session.partialSide}
+              aiText={session.aiResponseText}
+              aiSide={session.aiSide}
+              activeSide={activeSide}
+              onClear={session.clearConversation}
+            />
+          </div>
 
-            <div className="mt-10">
-              <QuickPrompts
-                onPrompt={() => {
-                  if (session.voiceState === VoiceSessionState.IDLE || session.voiceState === VoiceSessionState.ERROR) {
-                    session.toggle();
-                  }
-                }}
-                onPickPair={(my, their) => session.updateSettings({ myLanguage: my, theirLanguage: their })}
-                activeMyLanguage={session.settings.myLanguage}
-                activeTheirLanguage={session.settings.theirLanguage}
-              />
-            </div>
-
-            <div className="mt-8">
-              <FeatureBar />
-            </div>
-
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <StateIndicator
+              state={session.voiceState}
+              detectedLanguage={detected?.name}
+              languageEndonym={detected?.endonym}
+            />
+            <ErrorMessage
+              error={session.error}
+              micError={session.micError}
+              onDismiss={() => session.updateSettings({})}
+            />
             {session.latency.speechEndToFirstAudioMs ? (
-              <p className="mt-4 text-center text-[10px] text-faint">
+              <p className="text-center text-[10px] text-faint">
                 voice latency: {session.latency.speechEndToFirstAudioMs}ms
               </p>
             ) : null}
-          </main>
-        )}
+          </div>
+
+          {!conversationMode ? (
+            <>
+              {/* Voice engine card (floats right on xl) */}
+              <div className="mt-8 flex justify-center xl:absolute xl:right-8 xl:top-28 xl:mt-0 xl:justify-end">
+                <VoiceEngineCard />
+              </div>
+
+              <div className="mt-10">
+                <QuickPrompts
+                  onPrompt={() => {
+                    if (session.voiceState === VoiceSessionState.IDLE || session.voiceState === VoiceSessionState.ERROR) {
+                      session.toggle();
+                    }
+                  }}
+                  onPickPair={(my, their) => session.updateSettings({ myLanguage: my, theirLanguage: their })}
+                  activeMyLanguage={session.settings.myLanguage}
+                  activeTheirLanguage={session.settings.theirLanguage}
+                />
+              </div>
+
+              <div className="mt-8">
+                <FeatureBar />
+              </div>
+            </>
+          ) : null}
+        </main>
 
         <footer className="px-6 py-4 text-center text-[11px] text-faint">
           Speech is translated live by Sarvam Saaras + Cerebras + Sarvam Bulbul. Audio is not permanently stored.
@@ -215,14 +169,5 @@ export function VoiceChat() {
         onClose={() => setSettingsOpen(false)}
       />
     </div>
-  );
-}
-
-function MicGlyph() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="9" y="2" width="6" height="12" rx="3" />
-      <path d="M5 11a7 7 0 0 0 14 0M12 18v4" />
-    </svg>
   );
 }

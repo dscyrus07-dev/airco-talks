@@ -4,6 +4,7 @@ import {
   VoiceSessionState,
   isLanguageCode,
   isLanguageSetting,
+  type ConversationSide,
   type LanguageCode,
   type LanguageSetting,
   type ServerMessage,
@@ -33,7 +34,11 @@ export interface VoiceSessionViewModel {
   detectedLanguage: LanguageCode | null;
   languageConfidence: number;
   partialTranscript: string;
+  /** Side of the person currently speaking (live caption panel). */
+  partialSide: ConversationSide;
   aiResponseText: string;
+  /** Side that hears the translation currently streaming in. */
+  aiSide: ConversationSide;
   messages: ReturnType<typeof useConversation>["messages"];
   latency: { speechEndToFirstAudioMs?: number; llmFirstTokenMs?: number; ttsFirstAudioMs?: number };
   error: { code: string; message: string } | null;
@@ -78,6 +83,10 @@ export function useVoiceSession() {
   const [latency, setLatency] = useState<VoiceSessionViewModel["latency"]>({});
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [settings, setSettings] = useState<TranslatorSettings>(DEFAULT_SETTINGS);
+  /** Side of the person currently speaking (drives the live caption panel). */
+  const [partialSide, setPartialSide] = useState<ConversationSide>("my");
+  /** Side that hears the translation currently streaming in. */
+  const [aiSide, setAiSide] = useState<ConversationSide>("my");
 
   // Hydration-safe settings restore: only after mount, so the first client
   // render matches the server-rendered HTML.
@@ -116,10 +125,12 @@ export function useVoiceSession() {
           break;
         case "transcript_partial":
           conv.setPartialTranscript(msg.text);
+          setPartialSide(msg.side);
           break;
         case "transcript_final":
           conv.setPartialTranscript("");
-          if (msg.text.trim()) conv.addUserMessage(msg.text, msg.language);
+          setPartialSide(msg.side);
+          if (msg.text.trim()) conv.addUserMessage(msg.text, msg.language, msg.side);
           break;
         case "language_detected":
           setDetectedLanguage(msg.language);
@@ -127,12 +138,13 @@ export function useVoiceSession() {
           break;
         case "ai_response_started":
           conv.setPartialTranscript("");
+          setAiSide(msg.side);
           break;
         case "ai_response_chunk":
           conv.appendAiChunk(msg.text);
           break;
         case "ai_response_completed":
-          conv.finalizeAssistant(msg.text, msg.language);
+          conv.finalizeAssistant(msg.text, msg.language, msg.side);
           break;
         case "audio_chunk":
           audio.playChunk(msg.data, msg.sampleRate);
@@ -270,6 +282,8 @@ export function useVoiceSession() {
     conv.clear();
     setDetectedLanguage(null);
     setLatency({});
+    setPartialSide("my");
+    setAiSide("my");
   }, [conv]);
 
   return {
@@ -278,7 +292,9 @@ export function useVoiceSession() {
     detectedLanguage,
     languageConfidence,
     partialTranscript: conv.partialTranscript,
+    partialSide,
     aiResponseText: conv.aiResponseText,
+    aiSide,
     messages: conv.messages,
     latency,
     error,
