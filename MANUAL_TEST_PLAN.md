@@ -115,6 +115,7 @@
 | 10.1 | Stop the backend server, tap mic | Error message appears, state → "Error" |
 | 10.2 | Restart backend, tap mic again | Session reconnects, error clears |
 | 10.3 | Deny microphone permission in browser | "Microphone permission denied" error message |
+| 10.4 | Simulate a stalled LLM (slow API) | After ~15s the watchdog aborts, an error appears, and the session returns to "Listening" automatically — it never stays stuck on "Translating…" |
 
 ### 11. Latency
 

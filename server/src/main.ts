@@ -22,11 +22,12 @@ async function main(): Promise<void> {
   const conversationManager = new ConversationManager();
 
   const speechProvider = new SarvamSpeechProvider(config.sarvam.apiKey, config.sarvam.baseUrl);
-  const ttsProvider = new SarvamTtsProvider(config.sarvam.apiKey, config.sarvam.baseUrl);
+  const ttsProvider = new SarvamTtsProvider(config.sarvam.apiKey, config.sarvam.baseUrl, config.ttsTimeoutMs);
   const llmProvider = new CerebrasLlmProvider(
     config.cerebras.apiKey,
     config.cerebras.baseUrl,
     config.cerebras.model,
+    config.cerebras.timeoutMs,
   );
 
   const orchestrator = new VoiceConversationOrchestrator({

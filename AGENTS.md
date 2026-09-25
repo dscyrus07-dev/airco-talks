@@ -64,6 +64,9 @@ Optional:
 - `LANGUAGE_CONFIDENCE_THRESHOLD` (default 0.6)
 - `STT_SAMPLE_RATE` (default 16000)
 - `TTS_VOICE` (default empty = per-language default)
+- `TURN_TIMEOUT_MS` (default 12000) — silence before a locked turn auto-releases
+- `LLM_TIMEOUT_MS` (default 15000) — abort the LLM when Cerebras stalls
+- `TTS_TIMEOUT_MS` (default 15000) — abort TTS when Sarvam stalls
 - `LOG_LEVEL` (default info)
 
 ## Providers

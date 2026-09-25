@@ -5,7 +5,8 @@ export interface ServerConfig {
   webOrigins: string[];
   logLevel: "debug" | "info" | "warn" | "error";
   sarvam: { apiKey: string; baseUrl: string };
-  cerebras: { apiKey: string; baseUrl: string; model: string };
+  cerebras: { apiKey: string; baseUrl: string; model: string; timeoutMs: number };
+  ttsTimeoutMs: number;
   confidenceThreshold: number;
   maxContextMessages: number;
   sampleRate: number;
@@ -35,7 +36,9 @@ export class ConfigService {
         apiKey: cerebrasApiKey,
         baseUrl: "https://api.cerebras.ai/v1",
         model: env.CEREBRAS_MODEL ?? "gpt-oss-120b",
+        timeoutMs: intEnv(env, "LLM_TIMEOUT_MS", 15_000),
       },
+      ttsTimeoutMs: intEnv(env, "TTS_TIMEOUT_MS", 15_000),
       confidenceThreshold: floatEnv(env, "LANGUAGE_CONFIDENCE_THRESHOLD", 0.6),
       maxContextMessages: intEnv(env, "MAX_CONTEXT_MESSAGES", 12),
       sampleRate: intEnv(env, "STT_SAMPLE_RATE", 16000),
