@@ -137,6 +137,40 @@ describe("LanguageService", () => {
     });
   });
 
+  describe("isOutOfTurn", () => {
+    it("open floor: nobody is out of turn", () => {
+      expect(service.isOutOfTurn(null, "pa", "pa", "mr", undefined)).toBe(false);
+      expect(service.isOutOfTurn(null, "mr", "pa", "mr", undefined)).toBe(false);
+    });
+
+    it("holder's turn: drops speech clearly in the customer's language", () => {
+      expect(service.isOutOfTurn("my", "mr", "pa", "mr", undefined)).toBe(true);
+    });
+
+    it("holder's turn: accepts the holder's language and ambiguous detections", () => {
+      expect(service.isOutOfTurn("my", "pa", "pa", "mr", undefined)).toBe(false);
+      // Detection misfire outside the pair fails open (never swallows the holder).
+      expect(service.isOutOfTurn("my", "hi", "pa", "mr", undefined)).toBe(false);
+    });
+
+    it("holder's turn (auto): drops only the customer's remembered language", () => {
+      expect(service.isOutOfTurn("my", "ta", "hi", AUTO_LANGUAGE, "ta")).toBe(true);
+      expect(service.isOutOfTurn("my", "hi", "hi", AUTO_LANGUAGE, "ta")).toBe(false);
+      // Hinglish misfire is not the customer's language → accepted.
+      expect(service.isOutOfTurn("my", "en", "hi", AUTO_LANGUAGE, "ta")).toBe(false);
+    });
+
+    it("customer's turn: drops speech clearly in the holder's language", () => {
+      expect(service.isOutOfTurn("their", "pa", "pa", "mr", undefined)).toBe(true);
+      expect(service.isOutOfTurn("their", "mr", "pa", "mr", undefined)).toBe(false);
+    });
+
+    it("customer's turn (auto): drops only the holder's language", () => {
+      expect(service.isOutOfTurn("their", "hi", "hi", AUTO_LANGUAGE, "ta")).toBe(true);
+      expect(service.isOutOfTurn("their", "ta", "hi", AUTO_LANGUAGE, "ta")).toBe(false);
+    });
+  });
+
   describe("detectFromText", () => {
     it("detects Gujarati from Gujarati script", () => {
       expect(service.detectFromText("નમસ્તે", "hi")).toBe("gu");

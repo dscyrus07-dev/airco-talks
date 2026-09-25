@@ -41,6 +41,7 @@ async function main(): Promise<void> {
       confidenceThreshold: config.confidenceThreshold,
       maxContextMessages: config.maxContextMessages,
       sampleRate: config.sampleRate,
+      turnTimeoutMs: config.turnTimeoutMs,
     },
   });
 

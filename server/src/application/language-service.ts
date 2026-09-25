@@ -113,6 +113,33 @@ export class LanguageService {
   }
 
   /**
+   * Turn-relay gate. The conversation is locked to one side at a time: after
+   * a side's speech is translated, the floor passes to the OTHER side, and
+   * further speech from the previous speaker is ignored until they get the
+   * floor back (prevents one side flooding the other with translations).
+   *
+   * The gate fails OPEN on ambiguity so detection misfires never swallow the
+   * expected speaker's utterance:
+   *  - open floor (turn === null) → nobody is out of turn
+   *  - holder's turn → drop ONLY speech clearly in the customer's language
+   *  - customer's turn → drop ONLY speech clearly in the holder's language
+   */
+  isOutOfTurn(
+    turn: ConversationSide | null,
+    detected: LanguageCode,
+    myLanguage: LanguageCode,
+    theirSetting: LanguageSetting,
+    lastCustomerLanguage: LanguageCode | undefined,
+  ): boolean {
+    if (turn === null) return false;
+    if (turn === "my") {
+      const customerLanguage = theirSetting !== AUTO_LANGUAGE ? theirSetting : lastCustomerLanguage;
+      return customerLanguage !== undefined && detected === customerLanguage;
+    }
+    return detected === myLanguage;
+  }
+
+  /**
    * Best-effort language detection from transcript text via Unicode script.
    * Used only as a supplement when the STT provider did not report a language.
    * Marathi and Hindi share Devanagari, so for Devanagari we keep the current

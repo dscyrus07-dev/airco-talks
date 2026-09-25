@@ -10,6 +10,8 @@ export interface ServerConfig {
   maxContextMessages: number;
   sampleRate: number;
   ttsVoice: string;
+  /** Silence after which a locked conversation turn auto-releases (ms). */
+  turnTimeoutMs: number;
 }
 
 /**
@@ -38,6 +40,7 @@ export class ConfigService {
       maxContextMessages: intEnv(env, "MAX_CONTEXT_MESSAGES", 12),
       sampleRate: intEnv(env, "STT_SAMPLE_RATE", 16000),
       ttsVoice: env.TTS_VOICE ?? "",
+      turnTimeoutMs: intEnv(env, "TURN_TIMEOUT_MS", 12_000),
     };
   }
 }

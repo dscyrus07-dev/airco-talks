@@ -20,6 +20,8 @@ export interface OrchestratorConfig {
   confidenceThreshold: number;
   maxContextMessages: number;
   sampleRate: number;
+  /** Silence after which a locked turn auto-releases back to open floor. */
+  turnTimeoutMs: number;
 }
 
 export interface OrchestratorDeps {
@@ -41,6 +43,10 @@ interface SessionRuntime {
   theirLanguage: LanguageSetting;
   /** The customer's last heard language (used when theirLanguage is "auto"). */
   lastCustomerLanguage?: LanguageCode;
+  /** Whose turn it is to speak next (turn relay); null = open floor. */
+  turn: ConversationSide | null;
+  /** Timer that auto-releases a locked turn after inactivity. */
+  turnReleaseTimer?: ReturnType<typeof setTimeout>;
   voice?: string;
   /** Aborts the current LLM + TTS generation (barge-in / stop). */
   generationAbort?: AbortController;
@@ -96,6 +102,8 @@ export class VoiceConversationOrchestrator {
       stateMachine: new VoiceSessionStateMachine(),
       myLanguage,
       theirLanguage,
+      lastCustomerLanguage: undefined,
+      turn: null,
       voice,
       assistantText: "",
       ttsBusy: false,
@@ -108,6 +116,7 @@ export class VoiceConversationOrchestrator {
 
     this.transition(runtime, VoiceSessionState.CONNECTING);
     this.deps.eventBus.emit("voice_session_started", { sessionId });
+    this.deps.eventBus.emit("turn_changed", { sessionId, turn: null });
 
     try {
       await this.deps.speechProvider.startSession({
@@ -180,6 +189,8 @@ export class VoiceConversationOrchestrator {
       runtime.theirLanguage = theirLanguage;
       runtime.lastCustomerLanguage = undefined;
       conv?.setLanguagePair(myLanguage, theirLanguage);
+      // A new pair starts a fresh conversation flow.
+      this.setTurn(runtime, null);
     }
     if (voice !== undefined) runtime.voice = voice;
   }
@@ -189,6 +200,10 @@ export class VoiceConversationOrchestrator {
     if (!runtime) return;
     runtime.active = false;
     this.cancelGeneration(runtime);
+    if (runtime.turnReleaseTimer) {
+      clearTimeout(runtime.turnReleaseTimer);
+      runtime.turnReleaseTimer = undefined;
+    }
     try {
       await this.deps.speechProvider.stopSession();
     } catch (err) {
@@ -204,6 +219,17 @@ export class VoiceConversationOrchestrator {
 
   private onPartial(runtime: SessionRuntime, e: { text: string; language: LanguageCode }): void {
     if (!runtime.active) return;
+    // Suppress live captions from the side that is out of turn (their speech
+    // will be dropped anyway) so the UI never shows a flooding side.
+    if (this.deps.languageService.isOutOfTurn(
+      runtime.turn,
+      e.language,
+      runtime.myLanguage,
+      runtime.theirLanguage,
+      runtime.lastCustomerLanguage,
+    )) {
+      return;
+    }
     if (runtime.stateMachine.state === VoiceSessionState.LISTENING) {
       this.transition(runtime, VoiceSessionState.USER_SPEAKING);
     }
@@ -246,6 +272,24 @@ export class VoiceConversationOrchestrator {
     // echo) unless a barge-in is in progress. Barge-in transitions to
     // LISTENING first, so the genuine interrupting utterance is processed.
     if (runtime.stateMachine.state === VoiceSessionState.AI_SPEAKING) {
+      return;
+    }
+
+    // Turn relay: the floor belongs to one side at a time. Speech from the
+    // side that just spoke (before the other side replies) is dropped so one
+    // person cannot flood the other with back-to-back translations.
+    if (this.deps.languageService.isOutOfTurn(
+      runtime.turn,
+      e.language,
+      runtime.myLanguage,
+      runtime.theirLanguage,
+      runtime.lastCustomerLanguage,
+    )) {
+      this.deps.logger.debug("dropped out-of-turn utterance", {
+        sessionId: runtime.sessionId,
+        language: e.language,
+        turn: runtime.turn,
+      });
       return;
     }
 
@@ -322,8 +366,11 @@ export class VoiceConversationOrchestrator {
     if (runtime.stateMachine.state !== VoiceSessionState.PROCESSING) {
       this.transition(runtime, VoiceSessionState.PROCESSING);
     }
-    // The translation is heard by the side opposite to the speaker.
+    // The translation is heard by the side opposite to the speaker. The floor
+    // passes to that side NOW (not after playback) so they can barge in while
+    // the translation plays, and the speaker cannot keep flooding.
     const hearerSide: ConversationSide = speakerSide === "my" ? "their" : "my";
+    this.setTurn(runtime, hearerSide);
     this.deps.eventBus.emit("ai_response_started", { sessionId: runtime.sessionId, side: hearerSide });
 
     const { messages } = buildTranslationPrompt(utterance, sourceLanguage, targetLanguage);
@@ -473,6 +520,25 @@ export class VoiceConversationOrchestrator {
   }
 
   // ── helpers ───────────────────────────────────────────────
+
+  /** Pass the floor to a side and arm the inactivity auto-release timer. */
+  private setTurn(runtime: SessionRuntime, turn: ConversationSide | null): void {
+    if (runtime.turnReleaseTimer) {
+      clearTimeout(runtime.turnReleaseTimer);
+      runtime.turnReleaseTimer = undefined;
+    }
+    runtime.turn = turn;
+    this.deps.eventBus.emit("turn_changed", { sessionId: runtime.sessionId, turn });
+    if (turn !== null) {
+      runtime.turnReleaseTimer = setTimeout(() => {
+        if (!runtime.active) return;
+        // Nobody picked up the floor within the window — reopen it so the
+        // conversation never dead-locks on one silent side.
+        runtime.turnReleaseTimer = undefined;
+        if (runtime.turn !== null) this.setTurn(runtime, null);
+      }, this.deps.config.turnTimeoutMs);
+    }
+  }
 
   private cancelGeneration(runtime: SessionRuntime): void {
     runtime.generationAbort?.abort();

@@ -54,6 +54,10 @@ export function VoiceChat() {
   const connected = session.connectionStatus === "connected";
   const theirLabel = theirLang ? theirLang.endonym : "Auto-detect";
 
+  // Restart/Stop are offered as soon as a conversation is running.
+  const sessionActive =
+    session.voiceState !== VoiceSessionState.IDLE && session.voiceState !== VoiceSessionState.ENDED;
+
   return (
     <div className="flex min-h-screen">
       <AmbientBackground />
@@ -98,7 +102,7 @@ export function VoiceChat() {
           <div className={conversationMode ? "mt-2" : "mt-6"}>
             <ConversationPanels
               voiceState={session.voiceState}
-              onMicClick={session.toggle}
+              onMicClick={session.micPress}
               messages={session.messages}
               myLanguageEndonym={myLang.endonym}
               theirLanguageLabel={theirLabel}
@@ -107,11 +111,34 @@ export function VoiceChat() {
               aiText={session.aiResponseText}
               aiSide={session.aiSide}
               activeSide={activeSide}
+              turn={session.turn}
               onClear={session.clearConversation}
             />
           </div>
 
           <div className="mt-4 flex flex-col items-center gap-3">
+            {sessionActive ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={session.restart}
+                  className="glass flex items-center gap-2 rounded-full px-4 py-2 text-xs text-body transition duration-200 hover:border-accent/40 hover:text-strong focus-visible:ring-2 focus-visible:ring-accentSoft/60"
+                  aria-label="Restart conversation"
+                >
+                  <RestartGlyph />
+                  Restart
+                </button>
+                <button
+                  type="button"
+                  onClick={session.stop}
+                  className="glass flex items-center gap-2 rounded-full px-4 py-2 text-xs text-body transition duration-200 hover:border-danger/50 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger/50"
+                  aria-label="Stop conversation"
+                >
+                  <StopGlyph />
+                  Stop
+                </button>
+              </div>
+            ) : null}
             <StateIndicator
               state={session.voiceState}
               detectedLanguage={detected?.name}
@@ -169,5 +196,21 @@ export function VoiceChat() {
         onClose={() => setSettingsOpen(false)}
       />
     </div>
+  );
+}
+
+function RestartGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" />
+    </svg>
+  );
+}
+
+function StopGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
   );
 }

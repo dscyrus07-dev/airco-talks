@@ -87,6 +87,8 @@ export function useVoiceSession() {
   const [partialSide, setPartialSide] = useState<ConversationSide>("my");
   /** Side that hears the translation currently streaming in. */
   const [aiSide, setAiSide] = useState<ConversationSide>("my");
+  /** Whose turn it is to speak next (null = open floor). */
+  const [turn, setTurn] = useState<ConversationSide | null>(null);
 
   // Hydration-safe settings restore: only after mount, so the first client
   // render matches the server-rendered HTML.
@@ -151,6 +153,9 @@ export function useVoiceSession() {
           break;
         case "ai_speech_ended":
           // Playback stop is handled by the AudioPlayer's onEnded.
+          break;
+        case "turn_changed":
+          setTurn(msg.turn);
           break;
         case "latency":
           setLatency({
@@ -253,6 +258,35 @@ export function useVoiceSession() {
     conv.setPartialTranscript("");
   }, [audio, ws, conv]);
 
+  /**
+   * Panel mic press: start the session when idle, jump in (barge-in) while a
+   * translation is playing, no-op otherwise — stopping is the Stop button's
+   * job so a stray tap never ends the conversation.
+   */
+  const micPress = useCallback(() => {
+    if (voiceState === VoiceSessionState.IDLE || voiceState === VoiceSessionState.ERROR) {
+      if (voiceState === VoiceSessionState.ERROR) {
+        setVoiceState(VoiceSessionState.IDLE);
+        setError(null);
+      }
+      start();
+      return;
+    }
+    if (voiceState === VoiceSessionState.AI_SPEAKING) {
+      interrupt();
+    }
+  }, [voiceState, start, interrupt]);
+
+  /** End the current session, wipe the conversation, and start fresh. */
+  const restart = useCallback(() => {
+    stop();
+    conv.clear();
+    setDetectedLanguage(null);
+    setLatency({});
+    setTurn(null);
+    start();
+  }, [stop, start, conv]);
+
   const updateSettings = useCallback(
     (next: Partial<TranslatorSettings>) => {
       setSettings((prev) => {
@@ -284,6 +318,7 @@ export function useVoiceSession() {
     setLatency({});
     setPartialSide("my");
     setAiSide("my");
+    setTurn(null);
   }, [conv]);
 
   return {
@@ -295,6 +330,7 @@ export function useVoiceSession() {
     partialSide,
     aiResponseText: conv.aiResponseText,
     aiSide,
+    turn,
     messages: conv.messages,
     latency,
     error,
@@ -304,6 +340,9 @@ export function useVoiceSession() {
     getMicLevel: mic.getLevel,
     settings,
     toggle,
+    micPress,
+    restart,
+    stop,
     interrupt,
     updateSettings,
     clearConversation,

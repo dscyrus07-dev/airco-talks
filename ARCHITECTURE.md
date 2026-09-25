@@ -142,6 +142,16 @@ The browser uses an AudioWorklet (`public/pcm-processor.js`) for low-latency cap
 3. **Auto-detect customer mode** (`theirLanguage: "auto"`): The customer's language is unknown up front. Detected languages that differ from `myLanguage` are treated as the customer speaking (translated into `myLanguage`) and remembered (confidence-gated). When the holder speaks, the reply is translated into the customer's last heard language — falling back to English if the customer hasn't been heard yet.
 4. **Code-switching**: A few English words inside a Punjabi sentence do not change the direction — the LLM translates the full utterance into the target language, keeping commonly-used English words where natural.
 
+## Turn Relay (anti-chaos)
+
+The conversation runs as a strict turn relay so one side cannot flood the other:
+
+1. Open floor at session start — whoever speaks first takes the turn.
+2. When a side's utterance is accepted and its translation starts, the floor passes to the OTHER side immediately (so they can barge in while the translation plays).
+3. Speech from the side that just spoke is dropped (finals and live captions) until the floor comes back — the gate fails open on ambiguous detections so misfires never swallow the expected speaker.
+4. If nobody picks up the floor within `TURN_TIMEOUT_MS` (default 12s), it auto-releases to open floor.
+5. The UI shows whose turn it is ("Your turn — speak now" / "Customer's turn") via `turn_changed` messages.
+
 ## Barge-in
 
 When the AI is speaking (`AI_SPEAKING` state), the browser polls the microphone input level every 80ms. If the level exceeds a threshold for 3 consecutive checks (~240ms), the client sends an `interrupt` message. The orchestrator:

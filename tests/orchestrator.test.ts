@@ -126,6 +126,7 @@ describe("VoiceConversationOrchestrator", () => {
         confidenceThreshold: 0.6,
         maxContextMessages: 12,
         sampleRate: 16000,
+        turnTimeoutMs: 12000,
       },
     });
   });
@@ -239,6 +240,64 @@ describe("VoiceConversationOrchestrator", () => {
     // The holder spoke Punjabi → the customer hears the translation.
     expect(started[0]).toBe("their");
   });
+
+  it("turn relay: passes the floor to the other side after a translation starts", async () => {
+    const turns: (string | null)[] = [];
+    eventBus.on("turn_changed", (p) => turns.push(p.turn));
+
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", 0.95);
+    await flushMicrotasks();
+
+    // The holder spoke → the floor passes to the customer.
+    expect(turns[turns.length - 1]).toBe("their");
+  });
+
+  it("turn relay: drops the same side speaking again before the reply", async () => {
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਪਹਿਲੀ ਗੱਲ", "pa", 0.95);
+    await flushMicrotasks();
+    const callsAfterFirst = llm.streamCalls.length;
+
+    // The holder keeps talking before the customer replies → dropped.
+    speech.emitFinal("ਦੂਜੀ ਗੱਲ", "pa", 0.95);
+    await flushMicrotasks();
+
+    expect(llm.streamCalls.length).toBe(callsAfterFirst);
+  });
+
+  it("turn relay: the other side is accepted after the floor passes", async () => {
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", 0.95);
+    await flushMicrotasks();
+    const callsAfterFirst = llm.streamCalls.length;
+
+    // The customer replies in Marathi → accepted.
+    speech.emitFinal("नमस्कार", "mr", 0.95);
+    await flushMicrotasks();
+
+    expect(llm.streamCalls.length).toBe(callsAfterFirst + 1);
+  });
+
+  it("turn relay: auto-releases the floor after the timeout", async () => {
+    const turns: (string | null)[] = [];
+    eventBus.on("turn_changed", (p) => turns.push(p.turn));
+
+    await orchestrator.startSession("s1", "pa", "mr", "");
+    speech.emitFinal("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", 0.95);
+    await flushMicrotasks();
+    expect(turns[turns.length - 1]).toBe("their");
+
+    // Wait past the 12s turn timeout (flushMicrotasks sleeps 50ms per call).
+    for (let i = 0; i < 260; i++) await flushMicrotasks();
+    expect(turns[turns.length - 1]).toBeNull();
+
+    // The floor is open again — the holder may speak once more.
+    const callsBefore = llm.streamCalls.length;
+    speech.emitFinal("ਦੁਬਾਰਾ", "pa", 0.95);
+    await flushMicrotasks();
+    expect(llm.streamCalls.length).toBe(callsBefore + 1);
+  }, 20_000);
 
   it("interrupt cancels ongoing TTS playback", async () => {
     await orchestrator.startSession("s1", "pa", "mr", "");

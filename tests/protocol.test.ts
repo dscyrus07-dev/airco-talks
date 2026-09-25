@@ -104,6 +104,15 @@ describe("WebSocket protocol", () => {
       expect(isServerMessage(msg)).toBe(true);
     });
 
+    it("returns true for a valid turn_changed message", () => {
+      expect(isServerMessage({ type: "turn_changed", sessionId: UUID, turn: "my" })).toBe(true);
+      expect(isServerMessage({ type: "turn_changed", sessionId: UUID, turn: null })).toBe(true);
+    });
+
+    it("returns false for a turn_changed with an invalid turn", () => {
+      expect(isServerMessage({ type: "turn_changed", sessionId: UUID, turn: "other" })).toBe(false);
+    });
+
     it("returns true for a valid audio_chunk", () => {
       const msg = { type: "audio_chunk", sessionId: UUID, data: "abc=", sampleRate: 24000 };
       expect(isServerMessage(msg)).toBe(true);

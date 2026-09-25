@@ -17,14 +17,17 @@ interface ConversationPanelsProps {
   aiSide: ConversationSide;
   /** Panel to highlight right now (who is speaking / who is being translated for). */
   activeSide: ConversationSide | null;
+  /** Whose turn it is to speak next (null = open floor). */
+  turn: ConversationSide | null;
   onClear: () => void;
 }
 
 /**
  * Two-panel conversation view: one window per person (You / Customer), each
- * with its own mic. Every message is routed to the side it belongs to —
- * spoken text to the speaker's panel, translations to the listener's panel —
- * so both people can see at a glance who said what and in which language.
+ * with its own mic. The conversation runs as a turn relay — after a side's
+ * speech is translated, the floor passes to the other side, and each panel
+ * shows whose turn it is. Every message is routed to the side it belongs to —
+ * spoken text to the speaker's panel, translations to the listener's panel.
  */
 export function ConversationPanels({
   voiceState,
@@ -37,6 +40,7 @@ export function ConversationPanels({
   aiText,
   aiSide,
   activeSide,
+  turn,
   onClear,
 }: ConversationPanelsProps) {
   const myMessages = messages.filter((m) => m.side === "my");
@@ -53,6 +57,7 @@ export function ConversationPanels({
         liveText={partialSide === "my" ? partial : aiSide === "my" ? aiText : ""}
         liveKind={partialSide === "my" && partial ? "spoken" : aiSide === "my" && aiText ? "translation" : null}
         active={activeSide === "my"}
+        isYourTurn={turn === "my"}
         voiceState={voiceState}
         onMicClick={onMicClick}
         emptyHint="Tap your mic and speak"
@@ -65,6 +70,7 @@ export function ConversationPanels({
         liveText={partialSide === "their" ? partial : aiSide === "their" ? aiText : ""}
         liveKind={partialSide === "their" && partial ? "spoken" : aiSide === "their" && aiText ? "translation" : null}
         active={activeSide === "their"}
+        isYourTurn={turn === "their"}
         voiceState={voiceState}
         onMicClick={onMicClick}
         emptyHint="Their speech appears here"
@@ -92,6 +98,8 @@ interface PanelProps {
   liveText: string;
   liveKind: "spoken" | "translation" | null;
   active: boolean;
+  /** True when the turn relay has given this side the floor. */
+  isYourTurn: boolean;
   voiceState: VoiceSessionState;
   onMicClick: () => void;
   emptyHint: string;
@@ -104,6 +112,7 @@ function ConversationPanel({
   liveText,
   liveKind,
   active,
+  isYourTurn,
   voiceState,
   onMicClick,
   emptyHint,
@@ -132,6 +141,13 @@ function ConversationPanel({
         </div>
         <PanelMic state={voiceState} onClick={onMicClick} sideLabel={title} />
       </header>
+
+      {isYourTurn ? (
+        <p className="mb-2 flex items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-1.5 text-[11px] font-medium text-accentSoft">
+          <MicGlyphSmall />
+          {title === "You" ? "Your turn — speak now" : "Customer's turn"}
+        </p>
+      ) : null}
 
       {messages.length === 0 && !liveText ? (
         <div className="flex flex-1 items-center justify-center px-4 text-center">
@@ -210,6 +226,15 @@ function PanelMic({ state, onClick, sideLabel }: PanelMicProps) {
       {isActive ? <span className="absolute inset-0 rounded-full bg-danger/20 animate-pulseRing" aria-hidden /> : null}
       {isBusy ? <SpinnerIcon /> : <MicIcon />}
     </button>
+  );
+}
+
+function MicGlyphSmall() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v4" />
+    </svg>
   );
 }
 

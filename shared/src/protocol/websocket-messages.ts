@@ -160,6 +160,19 @@ export const AiSpeechEndedMessage = z.object({
 });
 export type AiSpeechEndedMessage = z.infer<typeof AiSpeechEndedMessage>;
 
+/**
+ * Turn relay state: whose turn it is to speak next. The orchestrator locks
+ * the conversation to one side at a time (customer speaks → translation plays
+ * → holder's turn → translation plays → customer's turn). `null` means the
+ * floor is open (session start, or auto-released after inactivity).
+ */
+export const TurnChangedMessage = z.object({
+  type: z.literal("turn_changed"),
+  sessionId: z.string().uuid(),
+  turn: z.union([ConversationSideSchema, z.null()]),
+});
+export type TurnChangedMessage = z.infer<typeof TurnChangedMessage>;
+
 export const StateChangedMessage = z.object({
   type: z.literal("state_changed"),
   sessionId: z.string().uuid(),
@@ -196,6 +209,7 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   AiResponseCompletedMessage,
   AudioChunkOutMessage,
   AiSpeechEndedMessage,
+  TurnChangedMessage,
   StateChangedMessage,
   LatencyMessage,
   ErrorMessage,

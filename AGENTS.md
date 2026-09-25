@@ -48,6 +48,7 @@ npm run dev --workspace web      # Next.js on :3000
 - Constructor-based DI (composition over inheritance)
 - `AppError` is the base error class; server has typed error subclasses in `infrastructure/errors/`
 - Translation direction policy lives ONLY in `LanguageService.resolveTranslationTarget` — fixed pair: detected language → the other language; auto mode (`theirLanguage: "auto"`): customer's language is detected + remembered, holder replies go to the customer's last heard language (fallback "en")
+- Turn relay lives in the orchestrator + `LanguageService.isOutOfTurn`: after a translation starts the floor passes to the hearer; out-of-turn speech is dropped (fail-open on ambiguous detections); `TURN_TIMEOUT_MS` (default 12s) auto-releases a silent floor
 - The LLM is a TRANSLATOR: `buildTranslationPrompt` forbids answering or continuing the speaker's words. Do not reintroduce chatbot behavior in prompts.
 
 ## Environment Variables

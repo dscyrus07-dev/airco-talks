@@ -226,6 +226,7 @@ export class AircoTalksWebSocketServer {
     on("ai_response_completed", (p) => route(p.sessionId, { type: "ai_response_completed", sessionId: p.sessionId, text: p.text, language: p.language, side: p.side }));
     on("tts_chunk", (p) => route(p.sessionId, { type: "audio_chunk", sessionId: p.sessionId, data: p.data, sampleRate: p.sampleRate }));
     on("ai_speech_ended", (p) => route(p.sessionId, { type: "ai_speech_ended", sessionId: p.sessionId }));
+    on("turn_changed", (p) => route(p.sessionId, { type: "turn_changed", sessionId: p.sessionId, turn: p.turn }));
     on("latency", (p) => route(p.sessionId, { type: "latency", sessionId: p.sessionId, speechEndToFirstAudioMs: p.speechEndToFirstAudioMs, llmFirstTokenMs: p.llmFirstTokenMs, ttsFirstAudioMs: p.ttsFirstAudioMs }));
     on("provider_error", (p) => route(p.sessionId, { type: "error", sessionId: p.sessionId, code: p.code, message: p.message, recoverable: p.recoverable }));
   }

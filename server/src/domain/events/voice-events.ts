@@ -18,6 +18,7 @@ export interface VoiceEventMap {
   tts_completed: { sessionId: string };
   ai_speech_ended: { sessionId: string };
   barge_in: { sessionId: string };
+  turn_changed: { sessionId: string; turn: ConversationSide | null };
   provider_error: { sessionId: string; code: string; message: string; recoverable: boolean; provider?: string };
   latency: {
     sessionId: string;

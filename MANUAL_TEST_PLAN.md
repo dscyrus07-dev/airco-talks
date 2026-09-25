@@ -70,6 +70,18 @@
 | 6.2 | While it plays, say "ਥੋਪ ਕਰੋ" (stop) in Punjabi | Audio stops immediately, state → "Listening", your words are transcribed |
 | 6.3 | Wait | The interruption is translated into Marathi and spoken |
 
+### 6. Turn Relay & Controls
+
+| # | Action | Expected Result |
+|---|--------|-----------------|
+| 6.1 | Start a session and speak | After your translation plays, YOUR panel shows "Your turn — speak now"; the customer's panel waits |
+| 6.2 | Same person keeps talking before the reply | Extra speech is ignored (no new translations, no captions) — no flooding |
+| 6.3 | The other side speaks | Accepted, translated, floor passes back |
+| 6.4 | Nobody speaks for ~12 seconds | The floor auto-releases (open) — either side can speak again |
+| 6.5 | Tap a panel mic while a translation plays | Playback stops immediately (barge-in) and the mic is live |
+| 6.6 | Click "Restart" mid-conversation | Session ends, conversation clears, a fresh session starts immediately |
+| 6.7 | Click "Stop" | Session ends; transcript stays visible; mics return to "tap to speak" |
+
 ### 7. Code-Switching
 
 | # | Action | Expected Result |
